@@ -3,6 +3,8 @@ PLAN: "feat: transbank v0.1.0 — Webpay Plus REST v1.2 como Gateway de payment_
 TAG: v0.1.0
 EXECUTOR: jules
 REVIEWER: none
+STATUS: running
+SESSION: 9854697969735076693
 ---
 
 > Este plan se despacha con el flujo CodeJob. Ver skill: agents-workflow.
