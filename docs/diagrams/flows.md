@@ -46,9 +46,14 @@ flowchart TD
 flowchart TD
     A[monto en unidades mínimas, moneda] --> M1{M1: ¿moneda?}
     M1 -- CLP --> CLP[entero tal cual]
-    M1 -- USD --> USD[decimal = monto / 100]
-    M1 -- otra --> E[ErrCurrency]
+    M1 -- USD --> E[ErrCurrency]
+    M1 -- otra --> E
 ```
+
+Solo CLP. `Commit`, `Status` y `Refund` del `Gateway` no reciben la moneda, así que un monto
+USD que sale como decimal no se podría devolver a unidades mínimas; además Webpay cobra USD con
+un código de comercio aparte. Cobrar en USD requiere primero extender el puerto en
+`payment_manager`.
 
 ## 4. Traducir el resultado de Commit/Status (`GatewayResult.Outcome`)
 

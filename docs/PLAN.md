@@ -3,8 +3,10 @@ PLAN: "feat: transbank v0.1.0 — Webpay Plus REST v1.2 como Gateway de payment_
 TAG: v0.1.0
 EXECUTOR: jules
 REVIEWER: none
-STATUS: running
+STATUS: review
 SESSION: 9854697969735076693
+PR: https://github.com/veltylabs/transbank/pull/1
+REVIEWED_COMMIT: 8259e086c66be25305d862ab33d6c8044134ac25
 ---
 
 > Este plan se despacha con el flujo CodeJob. Ver skill: agents-workflow.
@@ -145,9 +147,13 @@ respuesta con un canal** (los métodos del puerto son síncronos y solo se usan 
 Errores según diagrama §2 (textos exactos: `transbank: network: <err>`,
 `transbank: HTTP <n>: <error_message>`, `transbank: HTTP <n>`, `transbank: bad response`).
 
-Monto (diagrama §3): `CLP` → entero; `USD` → `monto/100` con 2 decimales; otra →
-`ErrCurrency` = `transbank: unsupported currency`. De vuelta, `amount` de Webpay → unidades
-mínimas con la misma regla.
+Monto (diagrama §3): `CLP` → entero; cualquier otra (incluida `USD`) →
+`ErrCurrency` = `transbank: unsupported currency`. De vuelta, `amount` de Webpay → entero
+redondeado.
+
+> **Desviación en la revisión (PR #1):** el plan pedía USD como `monto/100`, pero `Commit`,
+> `Status` y `Refund` del `Gateway` no traen la moneda: el monto de vuelta no se podría
+> convertir. Se cobra solo CLP; USD exige antes extender el puerto de `payment_manager`.
 
 ## 5. Etapa 3 — `webpay.go`: el `Gateway` (diagramas §4, §5)
 
@@ -243,7 +249,7 @@ pedido (método, ruta, cabeceras, cuerpo) en un slice y responde lo que la prueb
 | `C2-no/C3-sí` | `TestCall_HTTPErrorWithMessage` | `api_test.go` | 2 |
 | `C2-no/C3-no` | `TestCall_HTTPErrorWithoutMessage` | `api_test.go` | 2 |
 | `C4-no` | `TestCall_BadJSON` | `api_test.go` | 2 |
-| `M1-CLP`, `M1-USD`, `M1-otra` | `TestAmount_CLP`, `TestAmount_USD`, `TestAmount_Unsupported` | `amount_test.go` | 2 |
+| `M1-CLP`, `M1-USD` (⇒ `ErrCurrency`), `M1-otra` | `TestAmount_CLP`, `TestAmount_USD`, `TestAmount_Unsupported` | `amount_test.go` | 2 |
 | `Start` feliz | `TestStart_ReturnsTokenAndURL` (verifica cuerpo enviado) | `webpay_test.go` | 3 |
 | `Start` largos | `TestStart_FieldTooLongSkipsAPI` (tres casos) | `webpay_test.go` | 3 |
 | `S1-AUTHORIZED/S2-sí` | `TestCommit_Authorized` (código, tipo, cuotas, últimos 4, monto) | `webpay_test.go` | 3 |
