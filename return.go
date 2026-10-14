@@ -1,12 +1,15 @@
 package transbank
 
 import (
-	"github.com/veltylabs/payment_manager"
 	"webtyp.com/router"
+
+	paymentmanager "github.com/veltylabs/payment_manager"
 )
 
+// ReturnPath es la ruta a la que Webpay devuelve el navegador.
 const ReturnPath = "/payments/webpay/return"
 
+// Parámetros con que Webpay vuelve y el estado que informa un retorno inválido.
 const (
 	ParamToken    = "token_ws"
 	ParamAbort    = "TBK_TOKEN"
@@ -15,59 +18,54 @@ const (
 	StatusError   = "ERROR"
 )
 
+// Completer es lo que la ruta necesita de payment_manager (lo satisface
+// *paymentmanager.Module).
 type Completer interface {
 	CompleteOnlinePayment(ret paymentmanager.OnlineReturn) (paymentmanager.Payment, error)
 }
 
+// MountReturn registra GET y POST en ReturnPath, públicos: Webpay no trae
+// sesión y el token solo sirve con la llave secreta. page es la página de la
+// app a la que se redirige con ?payment=<id>&status=<estado>#<ReturnTo>.
 func (w *Webpay) MountReturn(r router.Router, c Completer, page string) {
 	handler := func(ctx router.Context) {
-		var token, abort, order string
-
-		if ctx.Method() == "POST" {
-			query := "?" + string(ctx.Body())
-			token, _ = router.QueryParam(query, ParamToken)
-			abort, _ = router.QueryParam(query, ParamAbort)
-			order, _ = router.QueryParam(query, ParamBuyOrder)
-		} else {
-			token, _ = router.QueryParam(ctx.Path(), ParamToken)
-			abort, _ = router.QueryParam(ctx.Path(), ParamAbort)
-			order, _ = router.QueryParam(ctx.Path(), ParamBuyOrder)
+		source := ctx.Path() // R1: GET → query
+		if ctx.Method() == methodPost {
+			source = "?" + string(ctx.Body()) // R1: POST → formulario
 		}
+		token, _ := router.QueryParam(source, ParamToken)
+		abort, _ := router.QueryParam(source, ParamAbort)
+		order, _ := router.QueryParam(source, ParamBuyOrder)
 
 		var ret paymentmanager.OnlineReturn
-		if token != "" && abort == "" {
-			ret = paymentmanager.OnlineReturn{Token: token}
-		} else if abort != "" {
-			ret = paymentmanager.OnlineReturn{AbortToken: abort}
-		} else if order != "" {
-			ret = paymentmanager.OnlineReturn{BuyOrder: order}
-		} else {
-			ctx.SetHeader("Location", page+"?"+paymentmanager.QueryStatus+"="+StatusError)
-			ctx.WriteStatus(303)
+		switch { // R2
+		case abort != "":
+			ret.AbortToken = abort // abandono, o error con "volver al sitio" (trae ambos)
+		case token != "":
+			ret.Token = token
+		case order != "":
+			ret.BuyOrder = order // venció el formulario
+		default:
+			redirect(ctx, page+"?"+paymentmanager.QueryStatus+"="+StatusError)
 			return
 		}
 
-		payment, err := c.CompleteOnlinePayment(ret)
-		if err != nil {
-			if payment.Id != "" {
-				dest := page + "?" + paymentmanager.QueryPayment + "=" + payment.Id + "&" + paymentmanager.QueryStatus + "=" + string(payment.Status)
-				if payment.ReturnTo != "" {
-					dest += "#" + payment.ReturnTo
-				}
-				ctx.SetHeader("Location", dest)
-			} else {
-				ctx.SetHeader("Location", page+"?"+paymentmanager.QueryStatus+"="+StatusError)
-			}
-		} else {
-			dest := page + "?" + paymentmanager.QueryPayment + "=" + payment.Id + "&" + paymentmanager.QueryStatus + "=" + string(payment.Status)
-			if payment.ReturnTo != "" {
-				dest += "#" + payment.ReturnTo
-			}
-			ctx.SetHeader("Location", dest)
+		p, _ := c.CompleteOnlinePayment(ret)
+		if p.Id == "" { // R3 no
+			redirect(ctx, page+"?"+paymentmanager.QueryStatus+"="+StatusError)
+			return
 		}
-		ctx.WriteStatus(303)
+		dest := page + "?" + paymentmanager.QueryPayment + "=" + p.Id + "&" + paymentmanager.QueryStatus + "=" + p.Status
+		if p.ReturnTo != "" {
+			dest += "#" + p.ReturnTo
+		}
+		redirect(ctx, dest)
 	}
-
 	r.Get(ReturnPath, handler).Public()
 	r.Post(ReturnPath, handler).Public()
+}
+
+func redirect(ctx router.Context, location string) {
+	ctx.SetHeader("Location", location)
+	ctx.WriteStatus(303)
 }

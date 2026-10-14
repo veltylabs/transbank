@@ -1,127 +1,100 @@
 package transbank
 
-import (
-	"github.com/veltylabs/payment_manager"
-	"webtyp.com/fmt"
-)
-
-type Webpay struct {
-	cfg Config
-}
+import paymentmanager "github.com/veltylabs/payment_manager"
 
 var _ paymentmanager.Gateway = (*Webpay)(nil)
 
+// Límites de Webpay para la creación.
+const (
+	MaxBuyOrder  = 26
+	MaxSessionID = 61
+	MaxReturnURL = 256
+)
+
+// Estados y tipos que informa Webpay.
+const (
+	StatusInitialized        = "INITIALIZED"
+	StatusAuthorized         = "AUTHORIZED"
+	StatusFailed             = "FAILED"
+	StatusReversed           = "REVERSED"
+	StatusNullified          = "NULLIFIED"
+	StatusPartiallyNullified = "PARTIALLY_NULLIFIED"
+	RefundTypeReversed       = "REVERSED"
+	RefundTypeNullified      = "NULLIFIED"
+)
+
+// Start crea la transacción; RedirectURL es la URL a la que el navegador hace
+// POST con token_ws.
 func (w *Webpay) Start(req paymentmanager.GatewayStart) (paymentmanager.GatewayStarted, error) {
-	if len(req.BuyOrder) > 26 || len(req.SessionId) > 61 || len(req.ReturnURL) > 256 {
-		return paymentmanager.GatewayStarted{}, fmt.Err("transbank: field exceeds Webpay length")
+	if len(req.BuyOrder) > MaxBuyOrder || len(req.SessionId) > MaxSessionID || len(req.ReturnURL) > MaxReturnURL {
+		return paymentmanager.GatewayStarted{}, ErrFieldTooLong
 	}
-
-	amount, err := encodeAmount(req.Amount, req.Currency)
+	amount, err := toWebpay(req.Amount, req.Currency)
 	if err != nil {
 		return paymentmanager.GatewayStarted{}, err
 	}
-
-	creq := &CreateRequest{
-		BuyOrder:  req.BuyOrder,
-		SessionId: req.SessionId,
-		Amount:    amount,
-		ReturnUrl: req.ReturnURL,
-	}
-
 	var res CreateResponse
-	err = w.call("POST", "/rswebpaytransaction/api/webpay/v1.2/transactions", creq, &res)
-	if err != nil {
+	if err := w.call(methodPost, TransactionsPath, &CreateRequest{BuyOrder: req.BuyOrder, SessionId: req.SessionId, Amount: amount, ReturnUrl: req.ReturnURL}, &res); err != nil {
 		return paymentmanager.GatewayStarted{}, err
 	}
-
-	return paymentmanager.GatewayStarted{
-		Token:       res.Token,
-		RedirectURL: res.Url + "?token_ws=" + res.Token,
-	}, nil
+	return paymentmanager.GatewayStarted{Token: res.Token, RedirectURL: res.Url}, nil
 }
 
+// Commit confirma la transacción al volver el cliente (PUT).
 func (w *Webpay) Commit(token string) (paymentmanager.GatewayResult, error) {
-	var tr TransactionResponse
-	err := w.call("PUT", "/rswebpaytransaction/api/webpay/v1.2/transactions/"+token, nil, &tr)
-	if err != nil {
-		return paymentmanager.GatewayResult{}, err
-	}
-	return w.translateStatus(&tr, token)
+	return w.transaction(methodPut, token)
 }
 
+// Status consulta la transacción (GET); Transbank la guarda 7 días.
 func (w *Webpay) Status(token string) (paymentmanager.GatewayResult, error) {
+	return w.transaction(methodGet, token)
+}
+
+func (w *Webpay) transaction(method, token string) (paymentmanager.GatewayResult, error) {
 	var tr TransactionResponse
-	err := w.call("GET", "/rswebpaytransaction/api/webpay/v1.2/transactions/"+token, nil, &tr)
-	if err != nil {
+	if err := w.call(method, TransactionsPath+"/"+token, nil, &tr); err != nil {
 		return paymentmanager.GatewayResult{}, err
 	}
-	return w.translateStatus(&tr, token)
-}
-
-func (w *Webpay) Refund(token string, amount int64) (paymentmanager.GatewayRefund, error) {
-	req := &RefundRequest{
-		Amount: float64(amount),
-	}
-	var res RefundResponse
-	err := w.call("POST", "/rswebpaytransaction/api/webpay/v1.2/transactions/"+token+"/refunds", req, &res)
-	if err != nil {
-		return paymentmanager.GatewayRefund{}, err
-	}
-
-	switch res.Type {
-	case "REVERSED":
-		return paymentmanager.GatewayRefund{
-			Kind:   paymentmanager.RefundKindReversed,
-			Amount: amount,
-		}, nil
-	case "NULLIFIED":
-		if res.ResponseCode != 0 {
-			return paymentmanager.GatewayRefund{}, fmt.Err("transbank: refund rejected")
-		}
-		return paymentmanager.GatewayRefund{
-			Kind:              paymentmanager.RefundKindNullified,
-			Amount:            int64(res.NullifiedAmount),
-			AuthorizationCode: res.AuthorizationCode,
-		}, nil
-	default:
-		return paymentmanager.GatewayRefund{}, fmt.Err("transbank: unknown refund type")
-	}
-}
-
-func (w *Webpay) translateStatus(tr *TransactionResponse, token string) (paymentmanager.GatewayResult, error) {
 	res := paymentmanager.GatewayResult{
-		Amount:            int64(tr.Amount),
+		Amount:            fromWebpay(tr.Amount),
 		AuthorizationCode: tr.AuthorizationCode,
 		PaymentTypeCode:   tr.PaymentTypeCode,
 		Installments:      tr.InstallmentsNumber,
 	}
-
-	if len(tr.CardDetail.CardNumber) >= 4 {
-		res.CardLast4 = tr.CardDetail.CardNumber[len(tr.CardDetail.CardNumber)-4:]
+	if n := len(tr.CardDetail.CardNumber); n >= 4 {
+		res.CardLast4 = tr.CardDetail.CardNumber[n-4:]
 	}
-
-	if tr.ResponseCode != 0 {
-		res.Outcome = paymentmanager.OutcomeRejected
-		return res, nil
-	}
-
-	switch tr.Status {
-	case "AUTHORIZED":
+	switch tr.Status { // diagrama §4
+	case StatusAuthorized:
 		res.Outcome = paymentmanager.OutcomeAuthorized
-	case "FAILED":
+		if tr.ResponseCode != 0 { // S2
+			res.Outcome = paymentmanager.OutcomeRejected
+		}
+	case StatusInitialized:
+		res.Outcome = paymentmanager.OutcomePending
+	case StatusFailed, StatusReversed, StatusNullified, StatusPartiallyNullified:
 		res.Outcome = paymentmanager.OutcomeRejected
 	default:
-		return paymentmanager.GatewayResult{}, fmt.Err("transbank: unknown status")
+		return paymentmanager.GatewayResult{}, ErrUnknownStatus
 	}
-
 	return res, nil
 }
 
-func mapStatus(status string) string {
-	switch status {
-	case "INITIALIZED":
-		return "FAILED"
-	default:
-		return "FAILED"
+// Refund devuelve amount (pesos). Webpay decide reversa (total, antes de 3 h)
+// o anulación (diagrama §5).
+func (w *Webpay) Refund(token string, amount int64) (paymentmanager.GatewayRefund, error) {
+	var res RefundResponse
+	if err := w.call(methodPost, TransactionsPath+"/"+token+refundsPathSuffix, &RefundRequest{Amount: float64(amount)}, &res); err != nil {
+		return paymentmanager.GatewayRefund{}, err
 	}
+	switch res.Type {
+	case RefundTypeReversed:
+		return paymentmanager.GatewayRefund{Kind: paymentmanager.RefundKindReversed, Amount: amount}, nil
+	case RefundTypeNullified:
+		if res.ResponseCode != 0 {
+			return paymentmanager.GatewayRefund{}, ErrRefundRejected
+		}
+		return paymentmanager.GatewayRefund{Kind: paymentmanager.RefundKindNullified, AuthorizationCode: res.AuthorizationCode, Amount: fromWebpay(res.NullifiedAmount)}, nil
+	}
+	return paymentmanager.GatewayRefund{}, ErrUnknownRefundType
 }

@@ -1,72 +1,89 @@
 package transbank
 
-const IntegrationBaseURL = "https://webpay3gint.transbank.cl"
-const ProductionBaseURL = "https://webpay3g.transbank.cl"
+// EnvWebpay es la variable de entorno con la configuración:
+// webpay://<código de comercio>:<llave secreta>@integration|production
+const EnvWebpay = "TRANSBANK_WEBPAY"
 
+const (
+	EnvironmentIntegration = "integration"
+	EnvironmentProduction  = "production"
+
+	IntegrationBaseURL = "https://webpay3gint.transbank.cl"
+	ProductionBaseURL  = "https://webpay3g.transbank.cl"
+
+	// Credenciales públicas del ambiente de integración de Transbank Developers.
+	IntegrationCommerceCode = "597055555532"
+	IntegrationAPIKey       = "579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C"
+
+	// DefaultTimeoutMs es el tiempo máximo de una llamada a la API.
+	DefaultTimeoutMs = 30000
+)
+
+const configScheme = "webpay://"
+
+// Config es la configuración de Webpay; Open la arma desde EnvWebpay.
 type Config struct {
 	CommerceCode string
 	APIKey       string
-	BaseURL      string
-	TimeoutMs    int
+	BaseURL      string // IntegrationBaseURL o ProductionBaseURL (otra solo en pruebas)
+	TimeoutMs    int    // 0 = DefaultTimeoutMs
 }
 
-func Open(s string) (*Webpay, error) {
-	if len(s) < 9 || s[:9] != "webpay://" {
+// Webpay implementa paymentmanager.Gateway sobre la API REST v1.2 de Webpay Plus.
+type Webpay struct {
+	cfg Config
+}
+
+// Open interpreta el valor de EnvWebpay. No llama a Transbank. Ningún error
+// incluye la llave.
+func Open(raw string) (*Webpay, error) {
+	if len(raw) < len(configScheme) || raw[:len(configScheme)] != configScheme {
 		return nil, ErrConfigScheme
 	}
-	s = s[9:]
-
-	envIdx := -1
-	for i := len(s) - 1; i >= 0; i-- {
-		if s[i] == '@' {
-			envIdx = i
-			break
-		}
-	}
-	if envIdx == -1 {
+	rest := raw[len(configScheme):]
+	at := lastIndex(rest, '@')
+	colon := firstIndex(rest, ':')
+	if at < 0 || colon < 0 || colon > at {
 		return nil, ErrConfigFormat
 	}
-
-	creds := s[:envIdx]
-	env := s[envIdx+1:]
-
-	colonIdx := -1
-	for i := 0; i < len(creds); i++ {
-		if creds[i] == ':' {
-			colonIdx = i
-			break
-		}
-	}
-	if colonIdx == -1 {
-		return nil, ErrConfigFormat
-	}
-
-	code := creds[:colonIdx]
-	key := creds[colonIdx+1:]
-
+	code, key, env := rest[:colon], rest[colon+1:at], rest[at+1:]
 	if code == "" || key == "" {
 		return nil, ErrConfigCredentials
 	}
-
-	baseURL := ""
-	if env == "integration" {
-		baseURL = IntegrationBaseURL
-	} else if env == "production" {
-		baseURL = ProductionBaseURL
-	} else {
+	var base string
+	switch env {
+	case EnvironmentIntegration:
+		base = IntegrationBaseURL
+	case EnvironmentProduction:
+		base = ProductionBaseURL
+	default:
 		return nil, ErrConfigEnvironment
 	}
-
-	return New(Config{
-		CommerceCode: code,
-		APIKey:       key,
-		BaseURL:      baseURL,
-	}), nil
+	return New(Config{CommerceCode: code, APIKey: key, BaseURL: base}), nil
 }
 
-func New(c Config) *Webpay {
-	if c.TimeoutMs == 0 {
-		c.TimeoutMs = 15000
+// New crea el Gateway con la configuración dada.
+func New(cfg Config) *Webpay {
+	if cfg.TimeoutMs == 0 {
+		cfg.TimeoutMs = DefaultTimeoutMs
 	}
-	return &Webpay{cfg: c}
+	return &Webpay{cfg: cfg}
+}
+
+func firstIndex(s string, c byte) int {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
+}
+
+func lastIndex(s string, c byte) int {
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] == c {
+			return i
+		}
+	}
+	return -1
 }

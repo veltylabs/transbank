@@ -1,30 +1,18 @@
 package transbank
 
-import (
-	"github.com/veltylabs/payment_manager"
-	"webtyp.com/fmt"
-)
+import paymentmanager "github.com/veltylabs/payment_manager"
 
-var ErrCurrency = fmt.Err("transbank: unsupported currency")
+// Webpay Plus nacional opera en pesos. El puerto Gateway no informa la moneda
+// en Commit, Status ni Refund, así que el adaptador solo acepta CLP: un monto en
+// otra moneda se rechaza al iniciar (Start) en vez de convertirse mal después.
 
-func encodeAmount(amount int64, currency string) (float64, error) {
-	switch currency {
-	case paymentmanager.CurrencyCLP:
-		return float64(amount), nil
-	case paymentmanager.CurrencyUSD:
-		return float64(amount) / 100.0, nil
-	default:
+// toWebpay pasa unidades mínimas al monto de Webpay (CLP no tiene decimales).
+func toWebpay(amount int64, currency string) (float64, error) {
+	if currency != paymentmanager.CurrencyCLP {
 		return 0, ErrCurrency
 	}
+	return float64(amount), nil
 }
 
-func decodeAmount(amount float64, currency string) (int64, error) {
-	switch currency {
-	case paymentmanager.CurrencyCLP:
-		return int64(amount), nil
-	case paymentmanager.CurrencyUSD:
-		return int64(amount * 100.0), nil
-	default:
-		return 0, ErrCurrency
-	}
-}
+// fromWebpay pasa un monto de Webpay a unidades mínimas (CLP, redondeado).
+func fromWebpay(amount float64) int64 { return int64(amount + 0.5) }

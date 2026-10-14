@@ -1,69 +1,66 @@
 package transbank
 
 import (
-	"bytes"
-
+	"webtyp.com/fetch"
 	"webtyp.com/fmt"
 	"webtyp.com/json"
-	fmt2 "fmt"
 	"webtyp.com/model"
-	"webtyp.com/fetch"
 )
 
+// Ruta y cabeceras de la API REST v1.2 de Webpay Plus.
+const (
+	TransactionsPath  = "/rswebpaytransaction/api/webpay/v1.2/transactions"
+	HeaderKeyID       = "Tbk-Api-Key-Id"
+	HeaderKeySecret   = "Tbk-Api-Key-Secret"
+	methodGet         = "GET"
+	methodPost        = "POST"
+	methodPut         = "PUT"
+	refundsPathSuffix = "/refunds"
+)
+
+// call hace un pedido a la API y espera la respuesta (los métodos del Gateway
+// son síncronos y solo corren en el servidor). in == nil: sin cuerpo.
 func (w *Webpay) call(method, path string, in model.Encodable, out model.Decodable) error {
 	url := w.cfg.BaseURL + path
-
 	var req *fetch.Request
 	switch method {
-	case "GET":
-		req = fetch.Get(url)
-	case "POST":
+	case methodPost:
 		req = fetch.Post(url)
-	case "PUT":
+	case methodPut:
 		req = fetch.Put(url)
-	case "DELETE":
-		req = fetch.Delete(url)
 	default:
-		return fmt.Err("transbank: unsupported method")
+		req = fetch.Get(url)
 	}
-
+	req.ContentTypeJSON().
+		Header(HeaderKeyID, w.cfg.CommerceCode).
+		Header(HeaderKeySecret, w.cfg.APIKey).
+		Timeout(w.cfg.TimeoutMs)
 	if in != nil {
-		var buf bytes.Buffer
-		_ = json.Encode(in, &buf)
-		req.Body(buf.Bytes())
-		req.Header("Content-Type", "application/json")
+		var body []byte
+		_ = json.Encode(in, &body) // los modelos generados no fallan al codificar
+		req.Body(body)
 	}
 
-	req.Header("Tbk-Api-Key-Id", w.cfg.CommerceCode)
-	req.Header("Tbk-Api-Key-Secret", w.cfg.APIKey)
-	req.Timeout(w.cfg.TimeoutMs)
-
-	errCh := make(chan error, 1)
+	done := make(chan error, 1)
 	req.Send(func(res *fetch.Response, err error) {
-		if err != nil {
-			errCh <- fmt.Err("transbank: network: ", err.Error())
+		if err != nil { // C1
+			done <- fmt.Err("transbank: network:", err.Error())
 			return
 		}
-
-		if res.Status < 200 || res.Status >= 300 {
+		if res.Status < 200 || res.Status > 299 { // C2
 			var apiErr APIError
-			bodyBytes := res.Body()
-			if err := json.Decode(bodyBytes, &apiErr); err == nil && apiErr.ErrorMessage != "" {
-				errCh <- fmt2.Errorf("transbank: HTTP %d: %s", res.Status, apiErr.ErrorMessage)
+			if json.Decode(res.Body(), &apiErr) == nil && apiErr.ErrorMessage != "" { // C3
+				done <- fmt.Errf("transbank: HTTP %d: %s", res.Status, apiErr.ErrorMessage)
 				return
 			}
-			errCh <- fmt2.Errorf("transbank: HTTP %d", res.Status)
+			done <- fmt.Errf("transbank: HTTP %d", res.Status)
 			return
 		}
-
-		if out != nil {
-			if err := json.Decode(res.Body(), out); err != nil {
-				errCh <- fmt.Err("transbank: bad response: ", err.Error())
-				return
-			}
+		if json.Decode(res.Body(), out) != nil { // C4
+			done <- ErrBadResponse
+			return
 		}
-		errCh <- nil
+		done <- nil
 	})
-
-	return <-errCh
+	return <-done
 }
