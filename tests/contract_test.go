@@ -1,11 +1,17 @@
+//go:build !wasm
+
 package tests
 
 import (
 	"testing"
-	"github.com/veltylabs/payment_manager"
+
+	paymentmanager "github.com/veltylabs/payment_manager"
 	"github.com/veltylabs/transbank"
 )
 
 func TestWebpay_ImplementsGateway(t *testing.T) {
-	var _ paymentmanager.Gateway = (*transbank.Webpay)(nil)
+	var g paymentmanager.Gateway = transbank.New(transbank.Config{})
+	if g == nil {
+		t.Fatal("New returns a Gateway")
+	}
 }

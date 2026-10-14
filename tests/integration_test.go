@@ -1,46 +1,27 @@
 //go:build transbank_integration
+
 package tests
 
 import (
-	"context"
 	"testing"
-	"github.com/veltylabs/payment_manager"
+
+	paymentmanager "github.com/veltylabs/payment_manager"
 	"github.com/veltylabs/transbank"
 )
 
-func TestIntegration(t *testing.T) {
-	wp, err := transbank.Open("webpay://597055555532:579B532A7440BB0C9079DED94D31EA1615BACEB56610332264630D42D0A36B1C@integration")
+// Corre contra el ambiente de integración real de Transbank con sus
+// credenciales públicas: go test -tags transbank_integration ./tests/
+func TestIntegration_StartThenStatusIsPending(t *testing.T) {
+	w, err := transbank.Open("webpay://" + transbank.IntegrationCommerceCode + ":" + transbank.IntegrationAPIKey + "@" + transbank.EnvironmentIntegration)
 	if err != nil {
-		t.Fatalf("Failed to open Transbank Webpay: %v", err)
+		t.Fatal(err)
 	}
-
-	req := paymentmanager.GatewayStart{
-		BuyOrder:  "O-INTEGRATION-TEST",
-		SessionId: "S-1",
-		Currency:  paymentmanager.CurrencyCLP,
-		Amount:    1000,
-		ReturnURL: "http://localhost:8080/return",
+	s, err := w.Start(paymentmanager.GatewayStart{BuyOrder: "it-transbank", SessionId: "it-transbank", Amount: 1000, Currency: paymentmanager.CurrencyCLP, ReturnURL: "https://example.com" + transbank.ReturnPath})
+	if err != nil || s.Token == "" || s.RedirectURL == "" {
+		t.Fatalf("Start: %+v, %v", s, err)
 	}
-
-	res, err := wp.Start(req)
-	if err != nil {
-		t.Fatalf("Start failed: %v", err)
+	r, err := w.Status(s.Token)
+	if err != nil || r.Outcome != paymentmanager.OutcomePending {
+		t.Fatalf("Status: %+v, %v", r, err)
 	}
-
-	if res.Token == "" {
-		t.Fatalf("Expected token, got empty")
-	}
-	if res.RedirectURL == "" {
-		t.Fatalf("Expected redirect URL, got empty")
-	}
-
-	statusRes, err := wp.Status(res.Token)
-	// It usually complains because we haven't hit the URL in a browser
-	if err != nil {
-		t.Logf("Status failed as expected before user interaction: %v", err)
-	} else {
-		t.Logf("Status returned outcome: %v", statusRes.Outcome)
-	}
-
-	_ = context.Background()
 }

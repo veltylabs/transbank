@@ -1,55 +1,46 @@
+//go:build !wasm
+
 package tests
 
 import (
 	"testing"
-	"github.com/veltylabs/payment_manager"
+
+	"webtyp.com/fmt"
+
+	paymentmanager "github.com/veltylabs/payment_manager"
 	"github.com/veltylabs/transbank"
 )
 
 func TestAmount_CLP(t *testing.T) {
-	enc, err := transbank.ExportEncodeAmount(1500, paymentmanager.CurrencyCLP)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	f := newFake(t)
+	if _, err := f.gateway().Start(paymentmanager.GatewayStart{BuyOrder: "b1", Amount: 25000, Currency: paymentmanager.CurrencyCLP}); err != nil {
+		t.Fatal(err)
 	}
-	if enc != 1500.0 {
-		t.Fatalf("expected 1500.0, got %f", enc)
+	if body := f.last(t).body; !fmt.Contains(body, `"amount":25000`) {
+		t.Fatalf("CLP travels as an integer: %s", body)
 	}
-
-	dec, err := transbank.ExportDecodeAmount(1500.0, paymentmanager.CurrencyCLP)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if dec != 1500 {
-		t.Fatalf("expected 1500, got %d", dec)
+	f.respond(200, `{"status":"AUTHORIZED","amount":25000,"response_code":0}`)
+	r, err := f.gateway().Commit("tok")
+	if err != nil || r.Amount != 25000 {
+		t.Fatalf("got %+v, %v", r, err)
 	}
 }
 
+// USD se rechaza: Commit, Status y Refund del Gateway no traen la moneda, así
+// que un monto USD no se podría devolver a unidades mínimas (desviación del
+// plan, ver docs/ARCHITECTURE.md).
 func TestAmount_USD(t *testing.T) {
-	enc, err := transbank.ExportEncodeAmount(1500, paymentmanager.CurrencyUSD)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if enc != 15.00 {
-		t.Fatalf("expected 15.00, got %f", enc)
-	}
-
-	dec, err := transbank.ExportDecodeAmount(15.00, paymentmanager.CurrencyUSD)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if dec != 1500 {
-		t.Fatalf("expected 1500, got %d", dec)
+	f := newFake(t)
+	_, err := f.gateway().Start(paymentmanager.GatewayStart{BuyOrder: "b1", Amount: 1250, Currency: paymentmanager.CurrencyUSD})
+	if err != transbank.ErrCurrency || len(f.requests) != 0 {
+		t.Fatalf("err = %v, requests = %d", err, len(f.requests))
 	}
 }
 
 func TestAmount_Unsupported(t *testing.T) {
-	_, err := transbank.ExportEncodeAmount(1500, "EUR")
-	if err != transbank.ErrCurrency {
-		t.Fatalf("expected ErrCurrency, got %v", err)
-	}
-
-	_, err = transbank.ExportDecodeAmount(15.00, "EUR")
-	if err != transbank.ErrCurrency {
-		t.Fatalf("expected ErrCurrency, got %v", err)
+	f := newFake(t)
+	_, err := f.gateway().Start(paymentmanager.GatewayStart{BuyOrder: "b1", Amount: 1250, Currency: "EUR"})
+	if err != transbank.ErrCurrency || len(f.requests) != 0 {
+		t.Fatalf("err = %v, requests = %d (a non-CLP amount never reaches Webpay)", err, len(f.requests))
 	}
 }

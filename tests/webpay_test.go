@@ -1,245 +1,155 @@
+//go:build !wasm
+
 package tests
 
 import (
 	"testing"
-	"github.com/veltylabs/payment_manager"
+
+	paymentmanager "github.com/veltylabs/payment_manager"
 	"github.com/veltylabs/transbank"
 )
 
-func TestWebpay_Start(t *testing.T) {
-	fake := newFakeWebpay(t)
-	fake.response = `{"token": "T-123", "url": "https://webpay.cl/pay"}`
-
-	wp := transbank.New(transbank.Config{BaseURL: fake.server.URL})
-
-	req := paymentmanager.GatewayStart{
-		BuyOrder:  "O-1",
-		SessionId: "S-1",
-		Currency:  paymentmanager.CurrencyCLP,
-		Amount:    1000,
-		ReturnURL: "http://return",
+func long(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = 'x'
 	}
+	return string(b)
+}
 
-	res, err := wp.Start(req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if res.Token != "T-123" {
-		t.Fatalf("expected Token T-123, got %s", res.Token)
-	}
-	if res.RedirectURL != "https://webpay.cl/pay?token_ws=T-123" {
-		t.Fatalf("expected URL https://webpay.cl/pay?token_ws=T-123, got %s", res.RedirectURL)
+func TestStart_ReturnsTokenAndURL(t *testing.T) {
+	f := newFake(t)
+	f.respond(200, `{"token":"tok-64","url":"https://webpay3gint.transbank.cl/webpayserver/initTransaction"}`)
+	s, err := f.gateway().Start(paymentmanager.GatewayStart{BuyOrder: "b1", SessionId: "b1", Amount: 1000, Currency: paymentmanager.CurrencyCLP, ReturnURL: "https://r"})
+	if err != nil || s.Token != "tok-64" || s.RedirectURL != "https://webpay3gint.transbank.cl/webpayserver/initTransaction" {
+		t.Fatalf("got %+v, %v (the token travels by POST, not in the URL)", s, err)
 	}
 }
 
-func TestWebpay_Start_BadCurrency(t *testing.T) {
-	wp := transbank.New(transbank.Config{})
-	req := paymentmanager.GatewayStart{
-		Currency: "EUR",
+func TestStart_FieldTooLongSkipsAPI(t *testing.T) {
+	f := newFake(t)
+	cases := []paymentmanager.GatewayStart{
+		{BuyOrder: long(transbank.MaxBuyOrder + 1), Currency: paymentmanager.CurrencyCLP},
+		{BuyOrder: "b", SessionId: long(transbank.MaxSessionID + 1), Currency: paymentmanager.CurrencyCLP},
+		{BuyOrder: "b", ReturnURL: long(transbank.MaxReturnURL + 1), Currency: paymentmanager.CurrencyCLP},
 	}
-	_, err := wp.Start(req)
-	if err == nil {
-		t.Fatalf("expected error for bad currency")
+	for i, c := range cases {
+		if _, err := f.gateway().Start(c); err != transbank.ErrFieldTooLong {
+			t.Errorf("case %d: %v", i, err)
+		}
 	}
-}
-
-func TestWebpay_Start_CallError(t *testing.T) {
-	wp := transbank.New(transbank.Config{BaseURL: "http://localhost:0"})
-	req := paymentmanager.GatewayStart{
-		Currency: paymentmanager.CurrencyCLP,
-	}
-	_, err := wp.Start(req)
-	if err == nil {
-		t.Fatalf("expected error for bad call")
+	if len(f.requests) != 0 {
+		t.Fatal("an invalid start never reaches Webpay")
 	}
 }
 
-func TestWebpay_Start_LengthError(t *testing.T) {
-	wp := transbank.New(transbank.Config{BaseURL: "http://localhost:0"})
-	req := paymentmanager.GatewayStart{
-		BuyOrder: "123456789012345678901234567890", // 30 chars
-	}
-	_, err := wp.Start(req)
-	if err == nil {
-		t.Fatalf("expected error for too long buy order")
+func TestStart_APIErrorPropagates(t *testing.T) {
+	f := newFake(t)
+	f.respond(401, `{"error_message":"Not Authorized"}`)
+	if _, err := f.gateway().Start(paymentmanager.GatewayStart{BuyOrder: "b", Currency: paymentmanager.CurrencyCLP}); err == nil {
+		t.Fatal("expected the API error")
 	}
 }
 
-func TestWebpay_Commit(t *testing.T) {
-	fake := newFakeWebpay(t)
-	fake.response = `{"vci": "TSY", "amount": 1000, "status": "AUTHORIZED", "buy_order": "O-1", "session_id": "S-1", "card_detail": {"card_number": "1234"}, "accounting_date": "1234", "transaction_date": "1234", "authorization_code": "1234", "payment_type_code": "VN", "response_code": 0, "installments_amount": 0, "installments_number": 0, "balance": 0}`
-
-	wp := transbank.New(transbank.Config{BaseURL: fake.server.URL})
-
-	res, err := wp.Commit("T-123")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestCommit_Authorized(t *testing.T) {
+	f := newFake(t)
+	f.respond(200, `{"status":"AUTHORIZED","amount":25000,"response_code":0,"authorization_code":"1213","payment_type_code":"VN","installments_number":3,"card_detail":{"card_number":"XXXXXXXXXXXX6623"}}`)
+	r, err := f.gateway().Commit("tok")
+	if err != nil || r.Outcome != paymentmanager.OutcomeAuthorized || r.Amount != 25000 || r.AuthorizationCode != "1213" || r.PaymentTypeCode != "VN" || r.Installments != 3 || r.CardLast4 != "6623" {
+		t.Fatalf("got %+v, %v", r, err)
 	}
-
-	if res.Outcome != paymentmanager.OutcomeAuthorized {
-		t.Fatalf("expected OutcomeAuthorized, got %v", res.Outcome)
-	}
-	if res.Amount != 1000 {
-		t.Fatalf("expected Amount 1000, got %d", res.Amount)
-	}
-
-	if len(fake.requests) != 1 {
-		t.Fatalf("expected 1 request")
-	}
-	if fake.requests[0].method != "PUT" {
-		t.Fatalf("expected PUT method, got %s", fake.requests[0].method)
-	}
-	if fake.requests[0].path != "/rswebpaytransaction/api/webpay/v1.2/transactions/T-123" {
-		t.Fatalf("expected path /rswebpaytransaction/api/webpay/v1.2/transactions/T-123, got %s", fake.requests[0].path)
+	if req := f.last(t); req.method != "PUT" || req.path != transbank.TransactionsPath+"/tok" {
+		t.Fatalf("request = %+v", req)
 	}
 }
 
-func TestWebpay_Commit_CallError(t *testing.T) {
-	wp := transbank.New(transbank.Config{BaseURL: "http://localhost:0"})
-	_, err := wp.Commit("T-123")
-	if err == nil {
-		t.Fatalf("expected error for bad call")
+func TestCommit_AuthorizedWithNonZeroCodeIsRejected(t *testing.T) {
+	f := newFake(t)
+	f.respond(200, `{"status":"AUTHORIZED","amount":25000,"response_code":-1}`)
+	if r, _ := f.gateway().Commit("tok"); r.Outcome != paymentmanager.OutcomeRejected {
+		t.Fatalf("outcome = %s", r.Outcome)
 	}
 }
 
-func TestWebpay_Commit_FailedStatus(t *testing.T) {
-	fake := newFakeWebpay(t)
-	fake.response = `{"status": "FAILED", "response_code": -1}`
-	wp := transbank.New(transbank.Config{BaseURL: fake.server.URL})
-	res, err := wp.Commit("T-123")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if res.Outcome != paymentmanager.OutcomeRejected {
-		t.Fatalf("expected OutcomeRejected, got %v", res.Outcome)
+func TestCommit_ErrorPropagates(t *testing.T) {
+	f := newFake(t)
+	f.respond(500, ``)
+	if _, err := f.gateway().Commit("tok"); err == nil {
+		t.Fatal("expected an error")
 	}
 }
 
-func TestWebpay_Status(t *testing.T) {
-	fake := newFakeWebpay(t)
-	fake.response = `{"vci": "TSY", "amount": 1000, "status": "AUTHORIZED", "buy_order": "O-1", "session_id": "S-1", "card_detail": {"card_number": "1234"}, "accounting_date": "1234", "transaction_date": "1234", "authorization_code": "1234", "payment_type_code": "VN", "response_code": 0, "installments_amount": 0, "installments_number": 0, "balance": 0}`
-
-	wp := transbank.New(transbank.Config{BaseURL: fake.server.URL})
-
-	res, err := wp.Status("T-123")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestStatus_InitializedIsPending(t *testing.T) {
+	f := newFake(t)
+	f.respond(200, `{"status":"INITIALIZED","amount":25000}`)
+	r, err := f.gateway().Status("tok")
+	if err != nil || r.Outcome != paymentmanager.OutcomePending || r.CardLast4 != "" {
+		t.Fatalf("got %+v, %v", r, err)
 	}
-
-	if res.Outcome != paymentmanager.OutcomeAuthorized {
-		t.Fatalf("expected OutcomeAuthorized, got %v", res.Outcome)
-	}
-	if res.Amount != 1000 {
-		t.Fatalf("expected Amount 1000, got %d", res.Amount)
-	}
-
-	if len(fake.requests) != 1 {
-		t.Fatalf("expected 1 request")
-	}
-	if fake.requests[0].method != "GET" {
-		t.Fatalf("expected GET method, got %s", fake.requests[0].method)
+	if req := f.last(t); req.method != "GET" {
+		t.Fatalf("method %s", req.method)
 	}
 }
 
-func TestWebpay_Status_CallError(t *testing.T) {
-	wp := transbank.New(transbank.Config{BaseURL: "http://localhost:0"})
-	_, err := wp.Status("T-123")
-	if err == nil {
-		t.Fatalf("expected error for bad call")
+func TestStatus_TerminalStatesAreRejected(t *testing.T) {
+	f := newFake(t)
+	for _, st := range []string{transbank.StatusFailed, transbank.StatusReversed, transbank.StatusNullified, transbank.StatusPartiallyNullified} {
+		f.respond(200, `{"status":"`+st+`"}`)
+		if r, err := f.gateway().Status("tok"); err != nil || r.Outcome != paymentmanager.OutcomeRejected {
+			t.Errorf("%s: %+v, %v", st, r, err)
+		}
 	}
 }
 
-func TestWebpay_Refund_Reversed(t *testing.T) {
-	fake := newFakeWebpay(t)
-	fake.response = `{"type": "REVERSED", "nullified_amount": 1000, "response_code": 0}`
-
-	wp := transbank.New(transbank.Config{BaseURL: fake.server.URL})
-
-	res, err := wp.Refund("T-123", 1000)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if res.Kind != paymentmanager.RefundKindReversed {
-		t.Fatalf("expected Reversed kind")
-	}
-
-	if len(fake.requests) != 1 {
-		t.Fatalf("expected 1 request")
-	}
-	if fake.requests[0].method != "POST" {
-		t.Fatalf("expected POST method, got %s", fake.requests[0].method)
-	}
-	if fake.requests[0].path != "/rswebpaytransaction/api/webpay/v1.2/transactions/T-123/refunds" {
-		t.Fatalf("expected path /rswebpaytransaction/api/webpay/v1.2/transactions/T-123/refunds, got %s", fake.requests[0].path)
+func TestStatus_UnknownStatus(t *testing.T) {
+	f := newFake(t)
+	f.respond(200, `{"status":"WEIRD"}`)
+	if _, err := f.gateway().Status("tok"); err != transbank.ErrUnknownStatus {
+		t.Fatalf("err = %v", err)
 	}
 }
 
-func TestWebpay_Refund_Nullified(t *testing.T) {
-	fake := newFakeWebpay(t)
-	fake.response = `{"type": "NULLIFIED", "nullified_amount": 1000, "authorization_code": "1234", "response_code": 0}`
-
-	wp := transbank.New(transbank.Config{BaseURL: fake.server.URL})
-
-	res, err := wp.Refund("T-123", 1000)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestRefund_Reversed(t *testing.T) {
+	f := newFake(t)
+	f.respond(200, `{"type":"REVERSED"}`)
+	r, err := f.gateway().Refund("tok", 25000)
+	if err != nil || r.Kind != paymentmanager.RefundKindReversed || r.Amount != 25000 {
+		t.Fatalf("got %+v, %v", r, err)
 	}
-
-	if res.Kind != paymentmanager.RefundKindNullified {
-		t.Fatalf("expected Nullified kind")
-	}
-	if res.Amount != 1000 {
-		t.Fatalf("expected amount 1000")
+	if req := f.last(t); req.method != "POST" || req.path != transbank.TransactionsPath+"/tok/refunds" || req.body != `{"amount":25000}` {
+		t.Fatalf("request = %+v", req)
 	}
 }
 
-func TestWebpay_Refund_CallError(t *testing.T) {
-	wp := transbank.New(transbank.Config{BaseURL: "http://localhost:0"})
-	_, err := wp.Refund("T-123", 1000)
-	if err == nil {
-		t.Fatalf("expected error for bad call")
+func TestRefund_Nullified(t *testing.T) {
+	f := newFake(t)
+	f.respond(200, `{"type":"NULLIFIED","response_code":0,"authorization_code":"123456","nullified_amount":1000,"balance":24000}`)
+	r, err := f.gateway().Refund("tok", 1000)
+	if err != nil || r.Kind != paymentmanager.RefundKindNullified || r.Amount != 1000 || r.AuthorizationCode != "123456" {
+		t.Fatalf("got %+v, %v", r, err)
 	}
 }
 
-func TestWebpay_Refund_FailedStatus(t *testing.T) {
-	fake := newFakeWebpay(t)
-	fake.response = `{"type": "NULLIFIED", "response_code": -1}`
-	wp := transbank.New(transbank.Config{BaseURL: fake.server.URL})
-	_, err := wp.Refund("T-123", 1000)
-	if err == nil {
-		t.Fatalf("expected error for rejected refund")
+func TestRefund_NullifiedRejected(t *testing.T) {
+	f := newFake(t)
+	f.respond(200, `{"type":"NULLIFIED","response_code":-1}`)
+	if _, err := f.gateway().Refund("tok", 1000); err != transbank.ErrRefundRejected {
+		t.Fatalf("err = %v", err)
 	}
 }
 
-func TestWebpay_Refund_Unknown(t *testing.T) {
-	fake := newFakeWebpay(t)
-	fake.response = `{"type": "UNKNOWN", "response_code": 0}`
-	wp := transbank.New(transbank.Config{BaseURL: fake.server.URL})
-	_, err := wp.Refund("T-123", 1000)
-	if err == nil {
-		t.Fatalf("expected error for unknown refund type")
+func TestRefund_UnknownType(t *testing.T) {
+	f := newFake(t)
+	f.respond(200, `{"type":"OTHER"}`)
+	if _, err := f.gateway().Refund("tok", 1000); err != transbank.ErrUnknownRefundType {
+		t.Fatalf("err = %v", err)
 	}
 }
 
-func TestWebpay_Commit_UnknownStatus3(t *testing.T) {
-	fake := newFakeWebpay(t)
-	fake.response = `{"vci": "TSY", "amount": 1000, "status": "UNKNOWN_STATUS", "response_code": 0}`
-
-	wp := transbank.New(transbank.Config{BaseURL: fake.server.URL})
-
-	_, err := wp.Commit("T-123")
-	if err == nil {
-		t.Fatalf("expected error for unknown status")
-	}
-}
-
-func TestMapStatus(t *testing.T) {
-	if transbank.ExportMapStatus("INITIALIZED") != "FAILED" {
-		t.Fatalf("expected FAILED")
-	}
-	if transbank.ExportMapStatus("OTHER") != "FAILED" {
-		t.Fatalf("expected FAILED")
+func TestRefund_ErrorPropagates(t *testing.T) {
+	f := newFake(t)
+	f.respond(500, ``)
+	if _, err := f.gateway().Refund("tok", 1000); err == nil {
+		t.Fatal("expected an error")
 	}
 }

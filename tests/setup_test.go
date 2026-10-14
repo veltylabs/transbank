@@ -1,16 +1,25 @@
+//go:build !wasm
+
 package tests
 
 import (
-	"github.com/veltylabs/payment_manager"
+	paymentmanager "github.com/veltylabs/payment_manager"
 )
 
+const (
+	testCode = "597055555532"
+	testKey  = "SECRET-KEY-123"
+)
+
+// fakeCompleter registra con qué la llamó la ruta de retorno y devuelve lo
+// configurado.
 type fakeCompleter struct {
-	lastReturn paymentmanager.OnlineReturn
-	payment    paymentmanager.Payment
-	err        error
+	got    []paymentmanager.OnlineReturn
+	result paymentmanager.Payment
+	err    error
 }
 
-func (f *fakeCompleter) CompleteOnlinePayment(ret paymentmanager.OnlineReturn) (paymentmanager.Payment, error) {
-	f.lastReturn = ret
-	return f.payment, f.err
+func (c *fakeCompleter) CompleteOnlinePayment(ret paymentmanager.OnlineReturn) (paymentmanager.Payment, error) {
+	c.got = append(c.got, ret)
+	return c.result, c.err
 }
