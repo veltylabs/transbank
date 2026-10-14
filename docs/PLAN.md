@@ -6,7 +6,7 @@ REVIEWER: none
 STATUS: review
 SESSION: 9854697969735076693
 PR: https://github.com/veltylabs/transbank/pull/1
-REVIEWED_COMMIT: c014c6d9337388462941b7a3a339c2b02a8e18fc
+REVIEWED_COMMIT: 8259e086c66be25305d862ab33d6c8044134ac25
 ---
 
 > Este plan se despacha con el flujo CodeJob. Ver skill: agents-workflow.
