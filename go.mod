@@ -14,7 +14,7 @@ require (
 require (
 	webtyp.com/date v0.0.10 // indirect
 	webtyp.com/escape v0.1.0 // indirect
-	webtyp.com/events v0.0.6 // indirect
+	webtyp.com/events v0.1.0 // indirect
 	webtyp.com/filepath v0.1.0 // indirect
 	webtyp.com/input v0.0.20 // indirect
 	webtyp.com/lang v0.1.6 // indirect
