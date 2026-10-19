@@ -17,7 +17,7 @@ require (
 	webtyp.com/events v0.1.0 // indirect
 	webtyp.com/filepath v0.1.0 // indirect
 	webtyp.com/input v0.0.20 // indirect
-	webtyp.com/lang v0.1.6 // indirect
+	webtyp.com/lang v0.1.7 // indirect
 	webtyp.com/orm v0.12.9 // indirect
 	webtyp.com/storage v0.1.4 // indirect
 	webtyp.com/time v0.5.8 // indirect
