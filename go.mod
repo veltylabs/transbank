@@ -12,7 +12,7 @@ require (
 )
 
 require (
-	webtyp.com/date v0.0.10 // indirect
+	webtyp.com/date v0.0.11 // indirect
 	webtyp.com/escape v0.1.0 // indirect
 	webtyp.com/events v0.1.0 // indirect
 	webtyp.com/filepath v0.1.0 // indirect

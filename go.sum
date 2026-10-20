@@ -1,7 +1,7 @@
 github.com/veltylabs/payment_manager v0.1.3 h1:wN2ao8VCvysUTz3RhCcGvBKDOvYFhnhZ8irlidjpu5c=
 github.com/veltylabs/payment_manager v0.1.3/go.mod h1:Abju4vmVvtuulrzQHcBf3CsTwjIFfgbwoRcB9f7CqSU=
-webtyp.com/date v0.0.10 h1:Hsiwq37Ok+/eTkLkTjVBJkYoJmt0Z1Heyk4RmtZAzy0=
-webtyp.com/date v0.0.10/go.mod h1:fAoR0H0V1lNUp7ubtXkKMPw1qMyQcccDONRTanw57GU=
+webtyp.com/date v0.0.11 h1:iiZgVF4rhlOWL3jI46ri7lz6gMPOF/QeXlGW0rxGOU4=
+webtyp.com/date v0.0.11/go.mod h1:fAoR0H0V1lNUp7ubtXkKMPw1qMyQcccDONRTanw57GU=
 webtyp.com/escape v0.1.0 h1:LvAiviOM15TUiJBUK4CO7TLp3oAQ+GoKunaVTVKsklA=
 webtyp.com/escape v0.1.0/go.mod h1:77ZTqob2u8NA2FUu723FzajXwcTk4ddlWWLXtKyOfO4=
 webtyp.com/events v0.1.0 h1:H1donRzRPcXVqO8gGmcQC+AugWSI+rtteENL+6aPRHM=
