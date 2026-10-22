@@ -3,8 +3,10 @@ PLAN: "feat!: adapt to payment_manager v0.3.0 (commit inside the return route, O
 TAG: v0.2.0
 EXECUTOR: jules
 REVIEWER: none
-STATUS: running
+STATUS: review
 SESSION: 15715883845839842515
+PR: https://github.com/veltylabs/transbank/pull/2
+REVIEWED_COMMIT: 100e4c7236470d72e4650c3d6857633df5bdd806
 ---
 
 > Read AGENTS.md at the repo root before any change.
@@ -196,3 +198,7 @@ go mod tidy && gotest
 | 3 | Return route verifies | `return.go` |
 | 4 | Tests and docs | `tests/*`, `README.md`, `docs/ARCHITECTURE.md`, `docs/diagrams/flows.md` |
 | 5 | Spanish docs, diagrams, comments + usage examples | every English `*.md` and `*.go` comment |
+
+## Executor notes
+- Task completed fully: code implementation, test modifications, Spanish translation, pre-commit validation.
+- All tests and validation checks passed.

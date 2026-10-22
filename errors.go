@@ -6,6 +6,7 @@ import "webtyp.com/fmt"
 var (
 	ErrConfigScheme      = fmt.Err("transbank: config must start with webpay://")
 	ErrConfigFormat      = fmt.Err("transbank: config must be webpay://<code>:<key>@<environment>")
+	ErrNoReturnURL       = fmt.Err("transbank: Config.ReturnURL is required to start a payment")
 	ErrConfigCredentials = fmt.Err("transbank: commerce code and key are required")
 	ErrConfigEnvironment = fmt.Err("transbank: environment must be integration or production")
 	ErrCurrency          = fmt.Err("transbank: unsupported currency")
