@@ -18,7 +18,7 @@ require (
 	webtyp.com/filepath v0.1.0 // indirect
 	webtyp.com/input v0.0.20 // indirect
 	webtyp.com/lang v0.1.7 // indirect
-	webtyp.com/money v0.1.3 // indirect
+	webtyp.com/money v0.2.0 // indirect
 	webtyp.com/orm v0.12.9 // indirect
 	webtyp.com/storage v0.1.8 // indirect
 	webtyp.com/time v0.6.2 // indirect
