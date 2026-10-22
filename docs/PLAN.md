@@ -3,6 +3,8 @@ PLAN: "feat!: adapt to payment_manager v0.3.0 (commit inside the return route, O
 TAG: v0.2.0
 EXECUTOR: jules
 REVIEWER: none
+STATUS: running
+SESSION: 15715883845839842515
 ---
 
 > Read AGENTS.md at the repo root before any change.
