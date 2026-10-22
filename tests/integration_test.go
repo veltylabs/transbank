@@ -12,11 +12,11 @@ import (
 // Corre contra el ambiente de integración real de Transbank con sus
 // credenciales públicas: go test -tags transbank_integration ./tests/
 func TestIntegration_StartThenStatusIsPending(t *testing.T) {
-	w, err := transbank.Open("webpay://" + transbank.IntegrationCommerceCode + ":" + transbank.IntegrationAPIKey + "@" + transbank.EnvironmentIntegration)
+	w, err := transbank.Open("webpay://" + transbank.IntegrationCommerceCode + ":" + transbank.IntegrationAPIKey + "@" + transbank.EnvironmentIntegration, "https://example.com" + transbank.ReturnPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := w.Start(paymentmanager.GatewayStart{BuyOrder: "it-transbank", SessionId: "it-transbank", Amount: 1000, Currency: paymentmanager.CurrencyCLP, ReturnURL: "https://example.com" + transbank.ReturnPath})
+	s, err := w.Start(paymentmanager.GatewayStart{PaymentId: "it-transbank", Amount: 1000, Currency: paymentmanager.CurrencyCLP})
 	if err != nil || s.Token == "" || s.RedirectURL == "" {
 		t.Fatalf("Start: %+v, %v", s, err)
 	}

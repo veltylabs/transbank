@@ -17,65 +17,60 @@ func long(n int) string {
 	return string(b)
 }
 
+func TestProvider_IsTransbank(t *testing.T) {
+	if newFake(t).gateway().Provider() != "transbank" {
+		t.Fatalf("Provider = %q", newFake(t).gateway().Provider())
+	}
+}
+
 func TestStart_ReturnsTokenAndURL(t *testing.T) {
 	f := newFake(t)
 	f.respond(200, `{"token":"tok-64","url":"https://webpay3gint.transbank.cl/webpayserver/initTransaction"}`)
-	s, err := f.gateway().Start(paymentmanager.GatewayStart{BuyOrder: "b1", SessionId: "b1", Amount: 1000, Currency: paymentmanager.CurrencyCLP, ReturnURL: "https://r"})
+	w := transbank.New(transbank.Config{ReturnURL: "https://r", BaseURL: f.srv.URL})
+	s, err := w.Start(paymentmanager.GatewayStart{PaymentId: "b1", Amount: 1000, Currency: paymentmanager.CurrencyCLP})
 	if err != nil || s.Token != "tok-64" || s.RedirectURL != "https://webpay3gint.transbank.cl/webpayserver/initTransaction" {
-		t.Fatalf("got %+v, %v (the token travels by POST, not in the URL)", s, err)
+		t.Fatalf("got %+v, %v (el token viaja por POST, no en la URL)", s, err)
+	}
+}
+
+func TestStart_WithoutReturnUrlIsErrNoReturnUrl(t *testing.T) {
+	if _, err := newFake(t).gateway().Start(paymentmanager.GatewayStart{PaymentId: "b1", Amount: 1000, Currency: paymentmanager.CurrencyCLP}); err != transbank.ErrNoReturnURL {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestStart_ReturnsTokenField(t *testing.T) {
+	f := newFake(t)
+	f.respond(200, `{"token":"tok-64","url":"https://webpay3gint.transbank.cl/webpayserver/initTransaction"}`)
+	w := transbank.New(transbank.Config{ReturnURL: "https://r", BaseURL: f.srv.URL})
+	s, _ := w.Start(paymentmanager.GatewayStart{PaymentId: "b1", Amount: 1000, Currency: paymentmanager.CurrencyCLP})
+	if s.TokenField != "token_ws" {
+		t.Fatalf("TokenField = %q", s.TokenField)
 	}
 }
 
 func TestStart_FieldTooLongSkipsAPI(t *testing.T) {
 	f := newFake(t)
-	cases := []paymentmanager.GatewayStart{
-		{BuyOrder: long(transbank.MaxBuyOrder + 1), Currency: paymentmanager.CurrencyCLP},
-		{BuyOrder: "b", SessionId: long(transbank.MaxSessionID + 1), Currency: paymentmanager.CurrencyCLP},
-		{BuyOrder: "b", ReturnURL: long(transbank.MaxReturnURL + 1), Currency: paymentmanager.CurrencyCLP},
+	w := transbank.New(transbank.Config{ReturnURL: "https://r", BaseURL: f.srv.URL})
+	wLongUrl := transbank.New(transbank.Config{ReturnURL: long(transbank.MaxReturnURL + 1), BaseURL: f.srv.URL})
+
+	if _, err := w.Start(paymentmanager.GatewayStart{PaymentId: long(transbank.MaxBuyOrder + 1), Currency: paymentmanager.CurrencyCLP}); err != transbank.ErrFieldTooLong {
+		t.Errorf("long buy order: %v", err)
 	}
-	for i, c := range cases {
-		if _, err := f.gateway().Start(c); err != transbank.ErrFieldTooLong {
-			t.Errorf("case %d: %v", i, err)
-		}
+	if _, err := wLongUrl.Start(paymentmanager.GatewayStart{PaymentId: "b", Currency: paymentmanager.CurrencyCLP}); err != transbank.ErrFieldTooLong {
+		t.Errorf("long return url: %v", err)
 	}
 	if len(f.requests) != 0 {
-		t.Fatal("an invalid start never reaches Webpay")
+		t.Fatal("un inicio inválido nunca llega a Webpay")
 	}
 }
 
 func TestStart_APIErrorPropagates(t *testing.T) {
 	f := newFake(t)
+	w := transbank.New(transbank.Config{ReturnURL: "https://r", BaseURL: f.srv.URL})
 	f.respond(401, `{"error_message":"Not Authorized"}`)
-	if _, err := f.gateway().Start(paymentmanager.GatewayStart{BuyOrder: "b", Currency: paymentmanager.CurrencyCLP}); err == nil {
-		t.Fatal("expected the API error")
-	}
-}
-
-func TestCommit_Authorized(t *testing.T) {
-	f := newFake(t)
-	f.respond(200, `{"status":"AUTHORIZED","amount":25000,"response_code":0,"authorization_code":"1213","payment_type_code":"VN","installments_number":3,"card_detail":{"card_number":"XXXXXXXXXXXX6623"}}`)
-	r, err := f.gateway().Commit("tok")
-	if err != nil || r.Outcome != paymentmanager.OutcomeAuthorized || r.Amount != 25000 || r.AuthorizationCode != "1213" || r.PaymentTypeCode != "VN" || r.Installments != 3 || r.CardLast4 != "6623" {
-		t.Fatalf("got %+v, %v", r, err)
-	}
-	if req := f.last(t); req.method != "PUT" || req.path != transbank.TransactionsPath+"/tok" {
-		t.Fatalf("request = %+v", req)
-	}
-}
-
-func TestCommit_AuthorizedWithNonZeroCodeIsRejected(t *testing.T) {
-	f := newFake(t)
-	f.respond(200, `{"status":"AUTHORIZED","amount":25000,"response_code":-1}`)
-	if r, _ := f.gateway().Commit("tok"); r.Outcome != paymentmanager.OutcomeRejected {
-		t.Fatalf("outcome = %s", r.Outcome)
-	}
-}
-
-func TestCommit_ErrorPropagates(t *testing.T) {
-	f := newFake(t)
-	f.respond(500, ``)
-	if _, err := f.gateway().Commit("tok"); err == nil {
-		t.Fatal("expected an error")
+	if _, err := w.Start(paymentmanager.GatewayStart{PaymentId: "b", Currency: paymentmanager.CurrencyCLP}); err == nil {
+		t.Fatal("se esperaba el error de la API")
 	}
 }
 
@@ -148,8 +143,9 @@ func TestRefund_UnknownType(t *testing.T) {
 
 func TestRefund_ErrorPropagates(t *testing.T) {
 	f := newFake(t)
+	w := transbank.New(transbank.Config{BaseURL: f.srv.URL})
 	f.respond(500, ``)
-	if _, err := f.gateway().Refund("tok", 1000); err == nil {
-		t.Fatal("expected an error")
+	if _, err := w.Refund("tok", 1000); err == nil {
+		t.Fatal("se esperaba un error")
 	}
 }

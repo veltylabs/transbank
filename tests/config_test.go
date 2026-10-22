@@ -13,7 +13,7 @@ import (
 
 func TestOpen_WrongScheme(t *testing.T) {
 	for _, raw := range []string{"", "http://a:b@integration", "webpay:/a:b@integration"} {
-		if _, err := transbank.Open(raw); err != transbank.ErrConfigScheme {
+		if _, err := transbank.Open(raw, "https://r"); err != transbank.ErrConfigScheme {
 			t.Errorf("%q: %v", raw, err)
 		}
 	}
@@ -21,7 +21,7 @@ func TestOpen_WrongScheme(t *testing.T) {
 
 func TestOpen_BadFormat(t *testing.T) {
 	for _, raw := range []string{"webpay://codekey@integration", "webpay://code:key", "webpay://code@key:integration"} {
-		if _, err := transbank.Open(raw); err != transbank.ErrConfigFormat {
+		if _, err := transbank.Open(raw, "https://r"); err != transbank.ErrConfigFormat {
 			t.Errorf("%q: %v", raw, err)
 		}
 	}
@@ -29,7 +29,7 @@ func TestOpen_BadFormat(t *testing.T) {
 
 func TestOpen_EmptyCredentials(t *testing.T) {
 	for _, raw := range []string{"webpay://:key@integration", "webpay://code:@integration"} {
-		if _, err := transbank.Open(raw); err != transbank.ErrConfigCredentials {
+		if _, err := transbank.Open(raw, "https://r"); err != transbank.ErrConfigCredentials {
 			t.Errorf("%q: %v", raw, err)
 		}
 	}
@@ -37,7 +37,7 @@ func TestOpen_EmptyCredentials(t *testing.T) {
 
 func TestOpen_Environments(t *testing.T) {
 	for _, env := range []string{transbank.EnvironmentIntegration, transbank.EnvironmentProduction} {
-		w, err := transbank.Open("webpay://" + transbank.IntegrationCommerceCode + ":" + transbank.IntegrationAPIKey + "@" + env)
+		w, err := transbank.Open("webpay://" + transbank.IntegrationCommerceCode + ":" + transbank.IntegrationAPIKey + "@" + env, "https://r")
 		if err != nil || w == nil {
 			t.Errorf("%s: %v", env, err)
 		}
@@ -45,14 +45,14 @@ func TestOpen_Environments(t *testing.T) {
 }
 
 func TestOpen_UnknownEnvironment(t *testing.T) {
-	if _, err := transbank.Open("webpay://a:b@staging"); err != transbank.ErrConfigEnvironment {
+	if _, err := transbank.Open("webpay://a:b@staging", "https://r"); err != transbank.ErrConfigEnvironment {
 		t.Fatalf("err = %v", err)
 	}
 }
 
 func TestOpen_ErrorsNeverContainKey(t *testing.T) {
 	for _, raw := range []string{"webpay://a:" + testKey, "webpay://a:" + testKey + "@staging", "webpay://:" + testKey + "@integration"} {
-		_, err := transbank.Open(raw)
+		_, err := transbank.Open(raw, "https://r")
 		if err == nil || fmt.Contains(err.Error(), testKey) {
 			t.Errorf("%q: %v", raw, err)
 		}

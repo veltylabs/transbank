@@ -29,13 +29,9 @@ TRANSBANK_WEBPAY=webpay://597055555532:579B532A7440BB0C9079DED94D31EA1615BACEB56
 ## Cableado en una app
 
 ```go
-wp, err := transbank.Open(env.Get(transbank.EnvWebpay))
-pm, err := paymentmanager.New(db, paymentmanager.Deps{
-	Gateway:   wp,
-	ReturnURL: publicURL + transbank.ReturnPath, // URL absoluta y pública
-	Charges:   []paymentmanager.ChargeSource{{Module: "appointment_booking", Reader: booking}},
-})
-wp.MountReturn(r, pm, "/") // GET y POST públicos en /payments/webpay/return
+wp, err := transbank.Open(env.Get(transbank.EnvWebpay), publicURL+transbank.ReturnPath)
+pm, err := paymentmanager.New(db, paymentmanager.Deps{Gateway: wp, Charges: []paymentmanager.ChargeSource{{Module: "appointment_booking", Reader: booking}}})
+wp.MountReturn(r, pm, "/")
 ```
 
 Tras el pago, la ruta redirige (303) a `"/?payment=<id>&status=<estado>#<return_to>"`, o a

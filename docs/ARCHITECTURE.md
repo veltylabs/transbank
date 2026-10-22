@@ -9,15 +9,17 @@ reserva al pago confirmado, está en el diagrama de secuencia de
 ## Piezas
 
 ```
-payment_manager ──Gateway──▶ Webpay (Start/Commit/Status/Refund) ──call──▶ API Webpay
-       ▲
-       └─Completer── MountReturn ◀── navegador (token_ws / TBK_TOKEN / TBK_ORDEN_COMPRA)
+payment_manager ──Gateway──▶ Webpay (Start/Status/Refund) ──call──▶ API Webpay
+       ▲                                                           ▲
+       └─Completer── MountReturn ◀── navegador (token_ws / …)      │
+                          │                                        │
+                          └────── commit ──────────────────────────┘
 ```
 
 | Operación | API | Método |
 |---|---|---|
 | `Start` | `/rswebpaytransaction/api/webpay/v1.2/transactions` | `POST` |
-| `Commit` | `…/transactions/{token}` | `PUT` |
+| `commit` (interno) | `…/transactions/{token}` | `PUT` |
 | `Status` | `…/transactions/{token}` | `GET` |
 | `Refund` | `…/transactions/{token}/refunds` | `POST` |
 
@@ -41,11 +43,12 @@ payment_manager ──Gateway──▶ Webpay (Start/Commit/Status/Refund) ─�
 ## Ruta de retorno
 
 `MountReturn` registra `GET` y `POST` en `ReturnPath`, ambos públicos: Webpay no trae sesión, y
-un token solo tiene efecto cuando `payment_manager` lo confirma con la llave secreta.
+un token solo tiene efecto cuando se confirma con la llave secreta. El `commit` a la API ocurre
+en esta ruta.
 
-- `TBK_TOKEN` (con o sin `token_ws`) ⇒ abandono o error con "volver al sitio": `AbortToken`.
-- Solo `token_ws` ⇒ `Token`.
-- Solo `TBK_ORDEN_COMPRA` ⇒ venció el formulario: `BuyOrder`.
+- `TBK_TOKEN` (con o sin `token_ws`) ⇒ abandono o error con "volver al sitio": `OutcomeCancelled`.
+- Solo `token_ws` ⇒ commit a la API; falla ⇒ 303 a `ERROR`; éxito ⇒ resultado del commit.
+- Solo `TBK_ORDEN_COMPRA` ⇒ venció el formulario: `OutcomeExpired`.
 - Nada ⇒ 303 a `page?status=ERROR`, sin llamar a `payment_manager`.
 
 Siempre responde 303, nunca 5xx: un error que igual identifica el pago lleva a la pantalla

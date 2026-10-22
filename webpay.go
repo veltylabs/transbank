@@ -23,10 +23,23 @@ const (
 	RefundTypeNullified      = "NULLIFIED"
 )
 
-// Start crea la transacción; RedirectURL es la URL a la que el navegador hace
-// POST con token_ws.
+// ProviderName es el nombre que payment_manager guarda en cada pago de este adaptador.
+const ProviderName = "transbank"
+
+// TokenField es el campo con que el navegador envía el token a Webpay (POST).
+const TokenField = "token_ws"
+
+// Provider devuelve el nombre del proveedor ("transbank").
+// Ejemplo: name := wp.Provider()
+func (w *Webpay) Provider() string { return ProviderName }
+
+// Start crea la transacción; el navegador hace POST a RedirectURL con TokenField.
+// Ejemplo: s, err := wp.Start(req)
 func (w *Webpay) Start(req paymentmanager.GatewayStart) (paymentmanager.GatewayStarted, error) {
-	if len(req.BuyOrder) > MaxBuyOrder || len(req.SessionId) > MaxSessionID || len(req.ReturnURL) > MaxReturnURL {
+	if w.cfg.ReturnURL == "" {
+		return paymentmanager.GatewayStarted{}, ErrNoReturnURL
+	}
+	if len(req.PaymentId) > MaxBuyOrder || len(w.cfg.ReturnURL) > MaxReturnURL {
 		return paymentmanager.GatewayStarted{}, ErrFieldTooLong
 	}
 	amount, err := toWebpay(req.Amount, req.Currency)
@@ -34,26 +47,28 @@ func (w *Webpay) Start(req paymentmanager.GatewayStart) (paymentmanager.GatewayS
 		return paymentmanager.GatewayStarted{}, err
 	}
 	var res CreateResponse
-	if err := w.call(methodPost, TransactionsPath, &CreateRequest{BuyOrder: req.BuyOrder, SessionId: req.SessionId, Amount: amount, ReturnUrl: req.ReturnURL}, &res); err != nil {
+	if err := w.call(methodPost, TransactionsPath, &CreateRequest{BuyOrder: req.PaymentId, SessionId: req.PaymentId, Amount: amount, ReturnUrl: w.cfg.ReturnURL}, &res); err != nil {
 		return paymentmanager.GatewayStarted{}, err
 	}
-	return paymentmanager.GatewayStarted{Token: res.Token, RedirectURL: res.Url}, nil
+	return paymentmanager.GatewayStarted{Token: res.Token, RedirectURL: res.Url, TokenField: TokenField}, nil
 }
 
-// Commit confirma la transacción al volver el cliente (PUT).
-func (w *Webpay) Commit(token string) (paymentmanager.GatewayResult, error) {
+// commit confirma la transacción al volver el cliente (PUT).
+func (w *Webpay) commit(token string) (paymentmanager.GatewayResult, string, error) {
 	return w.transaction(methodPut, token)
 }
 
 // Status consulta la transacción (GET); Transbank la guarda 7 días.
+// Ejemplo: res, err := wp.Status(token)
 func (w *Webpay) Status(token string) (paymentmanager.GatewayResult, error) {
-	return w.transaction(methodGet, token)
+	res, _, err := w.transaction(methodGet, token)
+	return res, err
 }
 
-func (w *Webpay) transaction(method, token string) (paymentmanager.GatewayResult, error) {
+func (w *Webpay) transaction(method, token string) (paymentmanager.GatewayResult, string, error) {
 	var tr TransactionResponse
 	if err := w.call(method, TransactionsPath+"/"+token, nil, &tr); err != nil {
-		return paymentmanager.GatewayResult{}, err
+		return paymentmanager.GatewayResult{}, "", err
 	}
 	res := paymentmanager.GatewayResult{
 		Amount:            fromWebpay(tr.Amount),
@@ -75,13 +90,14 @@ func (w *Webpay) transaction(method, token string) (paymentmanager.GatewayResult
 	case StatusFailed, StatusReversed, StatusNullified, StatusPartiallyNullified:
 		res.Outcome = paymentmanager.OutcomeRejected
 	default:
-		return paymentmanager.GatewayResult{}, ErrUnknownStatus
+		return paymentmanager.GatewayResult{}, "", ErrUnknownStatus
 	}
-	return res, nil
+	return res, tr.BuyOrder, nil
 }
 
 // Refund devuelve amount (pesos). Webpay decide reversa (total, antes de 3 h)
 // o anulación (diagrama §5).
+// Ejemplo: res, err := wp.Refund(token, 1000)
 func (w *Webpay) Refund(token string, amount int64) (paymentmanager.GatewayRefund, error) {
 	var res RefundResponse
 	if err := w.call(methodPost, TransactionsPath+"/"+token+refundsPathSuffix, &RefundRequest{Amount: float64(amount)}, &res); err != nil {

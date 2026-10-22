@@ -65,28 +65,28 @@ func TestModels_GeneratedLists(t *testing.T) {
 	}
 	for _, c := range cases {
 		if c.list.IsNil() || c.list.Len() != 0 {
-			t.Errorf("%s: a new list is empty and non-nil", c.name)
+			t.Errorf("%s: una lista nueva está vacía y no es nil", c.name)
 		}
 		added := c.list.Append()
 		if c.list.Len() != 1 || c.list.At(0) != added {
-			t.Errorf("%s: Append then At(0) returns the appended record", c.name)
+			t.Errorf("%s: Append y luego At(0) devuelve el registro añadido", c.name)
 		}
 		got, ok := added.(model.Model)
 		if !ok || got.ModelName() != c.name {
-			t.Errorf("%s: element model name = %v", c.name, added)
+			t.Errorf("%s: nombre del modelo del elemento = %v", c.name, added)
 			continue
 		}
 		if got.IsNil() || len(got.Schema()) != len(got.Pointers()) {
-			t.Errorf("%s: %d schema fields, %d pointers", c.name, len(got.Schema()), len(got.Pointers()))
+			t.Errorf("%s: %d campos en el esquema, %d punteros", c.name, len(got.Schema()), len(got.Pointers()))
 		}
 		if v, ok := added.(interface{ Validate(byte) error }); !ok || v.Validate(model.ActionCreate) != nil {
-			t.Errorf("%s: a zero value is a valid Webpay payload", c.name)
+			t.Errorf("%s: un valor cero es un payload válido para Webpay", c.name)
 		}
 		// Encode/DecodeFields de la lista no escriben nada: el codec recorre los elementos.
 		c.list.EncodeFields(nil)
 		c.list.DecodeFields(nil)
 		if c.list.Len() != 1 {
-			t.Errorf("%s: list Encode/DecodeFields must not change it", c.name)
+			t.Errorf("%s: Encode/DecodeFields en la lista no deben cambiarla", c.name)
 		}
 	}
 }

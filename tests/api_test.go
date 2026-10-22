@@ -13,17 +13,18 @@ import (
 
 func TestCall_SendsHeadersAndBody(t *testing.T) {
 	f := newFake(t)
+	w := transbank.New(transbank.Config{CommerceCode: testCode, APIKey: testKey, ReturnURL: "https://clinic/return", BaseURL: f.srv.URL})
 	f.respond(200, `{"token":"tok","url":"https://webpay.example/init"}`)
-	if _, err := f.gateway().Start(paymentmanager.GatewayStart{BuyOrder: "b1", SessionId: "s1", Amount: 25000, Currency: paymentmanager.CurrencyCLP, ReturnURL: "https://clinic/return"}); err != nil {
+	if _, err := w.Start(paymentmanager.GatewayStart{PaymentId: "b1", Amount: 25000, Currency: paymentmanager.CurrencyCLP}); err != nil {
 		t.Fatal(err)
 	}
 	r := f.last(t)
 	if r.method != "POST" || r.path != transbank.TransactionsPath || r.keyID != testCode || r.keySecret != testKey || !fmt.Contains(r.contentType, "application/json") {
 		t.Fatalf("request = %+v", r)
 	}
-	for _, want := range []string{`"buy_order":"b1"`, `"session_id":"s1"`, `"amount":25000`, `"return_url":"https://clinic/return"`} {
+	for _, want := range []string{`"buy_order":"b1"`, `"session_id":"b1"`, `"amount":25000`, `"return_url":"https://clinic/return"`} {
 		if !fmt.Contains(r.body, want) {
-			t.Errorf("body %s lacks %s", r.body, want)
+			t.Errorf("el cuerpo %s carece de %s", r.body, want)
 		}
 	}
 }

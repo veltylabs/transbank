@@ -27,6 +27,7 @@ type Config struct {
 	APIKey       string
 	BaseURL      string // IntegrationBaseURL o ProductionBaseURL (otra solo en pruebas)
 	TimeoutMs    int    // 0 = DefaultTimeoutMs
+	ReturnURL    string // URL absoluta y pública de ReturnPath (https://<sitio>/payments/webpay/return)
 }
 
 // Webpay implementa paymentmanager.Gateway sobre la API REST v1.2 de Webpay Plus.
@@ -36,7 +37,8 @@ type Webpay struct {
 
 // Open interpreta el valor de EnvWebpay. No llama a Transbank. Ningún error
 // incluye la llave.
-func Open(raw string) (*Webpay, error) {
+// Ejemplo: wp, err := transbank.Open(env, "https://example.com/payments/webpay/return")
+func Open(raw, returnURL string) (*Webpay, error) {
 	if len(raw) < len(configScheme) || raw[:len(configScheme)] != configScheme {
 		return nil, ErrConfigScheme
 	}
@@ -59,10 +61,11 @@ func Open(raw string) (*Webpay, error) {
 	default:
 		return nil, ErrConfigEnvironment
 	}
-	return New(Config{CommerceCode: code, APIKey: key, BaseURL: base}), nil
+	return New(Config{CommerceCode: code, APIKey: key, BaseURL: base, ReturnURL: returnURL}), nil
 }
 
 // New crea el Gateway con la configuración dada.
+// Ejemplo: wp := transbank.New(transbank.Config{ReturnURL: "https://example.com/payments/webpay/return", ...})
 func New(cfg Config) *Webpay {
 	if cfg.TimeoutMs == 0 {
 		cfg.TimeoutMs = DefaultTimeoutMs

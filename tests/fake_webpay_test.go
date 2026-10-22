@@ -47,7 +47,7 @@ func (f *fakeWebpay) gateway() *transbank.Webpay {
 func (f *fakeWebpay) last(t *testing.T) request {
 	t.Helper()
 	if len(f.requests) == 0 {
-		t.Fatal("no request reached the fake Webpay")
+		t.Fatal("ningún pedido llegó al Webpay falso")
 	}
 	return f.requests[len(f.requests)-1]
 }

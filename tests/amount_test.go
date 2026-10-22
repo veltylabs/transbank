@@ -13,14 +13,15 @@ import (
 
 func TestAmount_CLP(t *testing.T) {
 	f := newFake(t)
-	if _, err := f.gateway().Start(paymentmanager.GatewayStart{BuyOrder: "b1", Amount: 25000, Currency: paymentmanager.CurrencyCLP}); err != nil {
+	w := transbank.New(transbank.Config{ReturnURL: "https://r", BaseURL: f.srv.URL})
+	if _, err := w.Start(paymentmanager.GatewayStart{PaymentId: "b1", Amount: 25000, Currency: paymentmanager.CurrencyCLP}); err != nil {
 		t.Fatal(err)
 	}
 	if body := f.last(t).body; !fmt.Contains(body, `"amount":25000`) {
-		t.Fatalf("CLP travels as an integer: %s", body)
+		t.Fatalf("CLP viaja como entero: %s", body)
 	}
-	f.respond(200, `{"status":"AUTHORIZED","amount":25000,"response_code":0}`)
-	r, err := f.gateway().Commit("tok")
+	f.respond(200, `{"status":"AUTHORIZED","amount":25000,"response_code":0,"buy_order":"b1"}`)
+	r, err := w.Status("tok")
 	if err != nil || r.Amount != 25000 {
 		t.Fatalf("got %+v, %v", r, err)
 	}
@@ -31,7 +32,8 @@ func TestAmount_CLP(t *testing.T) {
 // plan, ver docs/ARCHITECTURE.md).
 func TestAmount_USD(t *testing.T) {
 	f := newFake(t)
-	_, err := f.gateway().Start(paymentmanager.GatewayStart{BuyOrder: "b1", Amount: 1250, Currency: paymentmanager.CurrencyUSD})
+	w := transbank.New(transbank.Config{ReturnURL: "https://r", BaseURL: f.srv.URL})
+	_, err := w.Start(paymentmanager.GatewayStart{PaymentId: "b1", Amount: 1250, Currency: paymentmanager.CurrencyUSD})
 	if err != transbank.ErrCurrency || len(f.requests) != 0 {
 		t.Fatalf("err = %v, requests = %d", err, len(f.requests))
 	}
@@ -39,8 +41,9 @@ func TestAmount_USD(t *testing.T) {
 
 func TestAmount_Unsupported(t *testing.T) {
 	f := newFake(t)
-	_, err := f.gateway().Start(paymentmanager.GatewayStart{BuyOrder: "b1", Amount: 1250, Currency: "EUR"})
+	w := transbank.New(transbank.Config{ReturnURL: "https://r", BaseURL: f.srv.URL})
+	_, err := w.Start(paymentmanager.GatewayStart{PaymentId: "b1", Amount: 1250, Currency: "EUR"})
 	if err != transbank.ErrCurrency || len(f.requests) != 0 {
-		t.Fatalf("err = %v, requests = %d (a non-CLP amount never reaches Webpay)", err, len(f.requests))
+		t.Fatalf("err = %v, requests = %d (un monto que no sea CLP nunca llega a Webpay)", err, len(f.requests))
 	}
 }

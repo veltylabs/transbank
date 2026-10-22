@@ -196,3 +196,7 @@ go mod tidy && gotest
 | 3 | Return route verifies | `return.go` |
 | 4 | Tests and docs | `tests/*`, `README.md`, `docs/ARCHITECTURE.md`, `docs/diagrams/flows.md` |
 | 5 | Spanish docs, diagrams, comments + usage examples | every English `*.md` and `*.go` comment |
+
+## Executor notes
+- Task completed fully: code implementation, test modifications, Spanish translation, pre-commit validation.
+- All tests and validation checks passed.
