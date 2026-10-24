@@ -22,5 +22,5 @@ require (
 	webtyp.com/orm v0.12.9 // indirect
 	webtyp.com/storage v0.1.10 // indirect
 	webtyp.com/time v0.6.2 // indirect
-	webtyp.com/view v0.6.40 // indirect
+	webtyp.com/view v0.6.44 // indirect
 )
