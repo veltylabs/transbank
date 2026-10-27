@@ -3,12 +3,12 @@ module github.com/veltylabs/transbank
 go 1.26.8
 
 require (
-	github.com/veltylabs/payment_manager v0.4.0
+	github.com/veltylabs/payment_manager v0.4.15
 	webtyp.com/fetch v0.1.29
 	webtyp.com/fmt v1.0.0
 	webtyp.com/json v0.5.30
 	webtyp.com/model v0.2.6
-	webtyp.com/router v0.4.6
+	webtyp.com/router v0.4.8
 )
 
 require (
