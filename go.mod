@@ -8,7 +8,7 @@ require (
 	webtyp.com/fmt v1.0.0
 	webtyp.com/json v0.5.30
 	webtyp.com/model v0.2.6
-	webtyp.com/router v0.4.8
+	webtyp.com/router v0.4.9
 )
 
 require (
