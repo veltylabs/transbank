@@ -2,8 +2,10 @@
 PLAN: "fix!: Webpay return passes only identification and Confirm asks Transbank (payment_manager Gateway.Confirm, router v0.5.0 RawQuery)"
 EXECUTOR: jules
 REVIEWER: none
-STATUS: running
+STATUS: review
 SESSION: 1239111218034982937
+PR: https://github.com/veltylabs/transbank/pull/3
+REVIEWED_COMMIT: eea502866402a55c3e33d650269b333337f3d7d8
 ---
 
 > Read AGENTS.md at the repo root before any change.
@@ -238,3 +240,7 @@ and in `tests/contract_test.go` (or where `var _ paymentmanager.Gateway = (*tran
 ## Delivery check
 
 `gotest` passes on every destination; every grep of this plan is empty; the pull request is open. A tree that does not compile or whose tests did not run is a failed delivery.
+
+## Executor notes
+
+- `docs/TESTS.md` did not exist in the codebase, so no updates were made to it as requested in Stage 3 and Stage 4. All other tasks have been completed exactly as specified.

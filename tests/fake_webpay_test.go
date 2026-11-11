@@ -16,6 +16,12 @@ type request struct {
 	method, path, keyID, keySecret, contentType, body string
 }
 
+// type response struct { status int; body string }
+type response struct {
+	status int
+	body   string
+}
+
 // fakeWebpay es un servidor Webpay de prueba: guarda cada pedido y responde
 // status/body configurados por la prueba.
 type fakeWebpay struct {
@@ -23,6 +29,7 @@ type fakeWebpay struct {
 	requests []request
 	status   int
 	body     string
+	byMethod map[string]response
 }
 
 func newFake(t *testing.T) *fakeWebpay {
@@ -31,14 +38,25 @@ func newFake(t *testing.T) *fakeWebpay {
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		f.requests = append(f.requests, request{r.Method, r.URL.Path, r.Header.Get(transbank.HeaderKeyID), r.Header.Get(transbank.HeaderKeySecret), r.Header.Get("Content-Type"), string(b)})
-		w.WriteHeader(f.status)
-		_, _ = w.Write([]byte(f.body))
+		status, body := f.status, f.body
+		if resp, ok := f.byMethod[r.Method]; ok {
+			status, body = resp.status, resp.body
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(f.srv.Close)
 	return f
 }
 
 func (f *fakeWebpay) respond(status int, body string) { f.status, f.body = status, body }
+
+func (f *fakeWebpay) respondTo(method string, status int, body string) {
+	if f.byMethod == nil {
+		f.byMethod = map[string]response{}
+	}
+	f.byMethod[method] = response{status, body}
+}
 
 func (f *fakeWebpay) gateway() *transbank.Webpay {
 	return transbank.New(transbank.Config{CommerceCode: testCode, APIKey: testKey, BaseURL: f.srv.URL})

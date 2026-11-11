@@ -10,8 +10,5 @@ import (
 )
 
 func TestWebpay_ImplementsGateway(t *testing.T) {
-	var g paymentmanager.Gateway = transbank.New(transbank.Config{ReturnURL: "https://example.com/return"})
-	if g == nil {
-		t.Fatal("New returns a Gateway")
-	}
+	var _ paymentmanager.Gateway = transbank.New(transbank.Config{ReturnURL: "https://example.com/return"})
 }

@@ -7,7 +7,9 @@ devuelve transacciones, y monta la ruta pública por la que Webpay devuelve el n
 Diseño: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); flujos y ramas probadas:
 [docs/diagrams/flows.md](docs/diagrams/flows.md).
 
-Solo servidor: el navegador nunca ve la llave secreta ni llama a Webpay.
+Solo servidor: el navegador nunca ve la llave secreta ni llama a Webpay. La ruta de retorno
+solo identifica el pago; `payment_manager` pregunta a Transbank a través de `Confirm` (así,
+un retorno falsificado no puede cambiar el estado de un pago).
 
 ## Configuración
 

@@ -18,10 +18,9 @@ const (
 	StatusError   = "ERROR"
 )
 
-// Completer es lo que la ruta necesita de payment_manager (lo satisface
-// *paymentmanager.Module).
+// Completer es lo que la ruta necesita de payment_manager (lo satisface *paymentmanager.Module).
 type Completer interface {
-	CompleteOnlinePayment(r paymentmanager.OnlineResult) (paymentmanager.Payment, error)
+	CompleteOnlinePayment(ret paymentmanager.OnlineReturn) (paymentmanager.Payment, error)
 }
 
 // MountReturn registra GET y POST en ReturnPath, públicos: Webpay no trae
@@ -30,34 +29,23 @@ type Completer interface {
 // Ejemplo: wp.MountReturn(r, pm, "/")
 func (w *Webpay) MountReturn(r router.Router, c Completer, page string) {
 	handler := func(ctx router.Context) {
-		source := ctx.Path() // R1: GET → query
+		source := "?" + ctx.RawQuery() // GET → query
 		if ctx.Method() == methodPost {
-			source = "?" + string(ctx.Body()) // R1: POST → formulario
+			source = "?" + string(ctx.Body()) // POST → formulario
 		}
 		token, _ := router.QueryParam(source, ParamToken)
 		abort, _ := router.QueryParam(source, ParamAbort)
 		order, _ := router.QueryParam(source, ParamBuyOrder)
-
-		var r paymentmanager.OnlineResult
-		switch { // R2
-		case abort != "" && order != "":
-			r = paymentmanager.OnlineResult{PaymentId: order, Result: paymentmanager.GatewayResult{Outcome: paymentmanager.OutcomeCancelled}}
-		case token != "":
-			res, buyOrder, err := w.commit(token) // verificar = confirmar con Webpay
-			if err != nil {
-				redirect(ctx, page+"?"+paymentmanager.QueryStatus+"="+StatusError)
-				return
-			}
-			r = paymentmanager.OnlineResult{PaymentId: buyOrder, Result: res}
-		case order != "":
-			r = paymentmanager.OnlineResult{PaymentId: order, Result: paymentmanager.GatewayResult{Outcome: paymentmanager.OutcomeExpired}} // venció el formulario
-		default:
+		if abort != "" { // el cliente volvió sin pagar: el token que trae es TBK_TOKEN
+			token = abort
+		}
+		if token == "" && order == "" {
 			redirect(ctx, page+"?"+paymentmanager.QueryStatus+"="+StatusError)
 			return
 		}
-
-		p, _ := c.CompleteOnlinePayment(r)
-		if p.Id == "" { // R3 no
+		// La vuelta solo IDENTIFICA el pago: lo que pasó lo pregunta payment_manager a Webpay (Confirm).
+		p, _ := c.CompleteOnlinePayment(paymentmanager.OnlineReturn{PaymentId: order, Token: token})
+		if p.Id == "" {
 			redirect(ctx, page+"?"+paymentmanager.QueryStatus+"="+StatusError)
 			return
 		}
