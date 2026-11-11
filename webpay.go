@@ -65,6 +65,18 @@ func (w *Webpay) Status(token string) (paymentmanager.GatewayResult, error) {
 	return res, err
 }
 
+// Confirm finalizes the transaction (commit, PUT) and reports its real state. A transaction that cannot be committed (the buyer
+// cancelled, the form expired, it was already committed) is reported as Transbank sees it (Status, GET). Idempotent.
+//
+// Example: res, err := wp.Confirm(token)
+func (w *Webpay) Confirm(token string) (paymentmanager.GatewayResult, error) {
+	res, _, err := w.commit(token)
+	if err == nil {
+		return res, nil
+	}
+	return w.Status(token)
+}
+
 func (w *Webpay) transaction(method, token string) (paymentmanager.GatewayResult, string, error) {
 	var tr TransactionResponse
 	if err := w.call(method, TransactionsPath+"/"+token, nil, &tr); err != nil {

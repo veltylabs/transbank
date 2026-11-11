@@ -238,3 +238,7 @@ and in `tests/contract_test.go` (or where `var _ paymentmanager.Gateway = (*tran
 ## Delivery check
 
 `gotest` passes on every destination; every grep of this plan is empty; the pull request is open. A tree that does not compile or whose tests did not run is a failed delivery.
+
+## Executor notes
+
+- `docs/TESTS.md` did not exist in the codebase, so no updates were made to it as requested in Stage 3 and Stage 4. All other tasks have been completed exactly as specified.

@@ -65,53 +65,52 @@ func TestMountReturn_RegistersPublicGetAndPost(t *testing.T) {
 	}
 }
 
-func TestReturn_GetTokenRedirectsWithStatus(t *testing.T) {
-	c := &fakeCompleter{result: paid()}
+func TestReturn_PassesOnlyIdentification(t *testing.T) {
+	c := &fakeCompleter{result: paymentmanager.Payment{Id: "pay-1", Status: paymentmanager.StatusFailed}}
 	r, fw := mounted(t, c)
-	fw.respond(200, `{"status":"AUTHORIZED","response_code":0,"buy_order":"p1","amount":25000}`)
+	invokeGet(r, "?TBK_TOKEN=t&TBK_ORDEN_COMPRA=p1")
+	if len(c.got) != 1 || c.got[0].PaymentId != "p1" || c.got[0].Token != "t" {
+		t.Fatalf("completer got %+v", c.got)
+	}
+	if len(fw.requests) != 0 {
+		t.Fatal("the return route must not call Webpay itself: payment_manager does it through Confirm")
+	}
+}
+
+func TestReturn_TokenAlonePassesTheToken(t *testing.T) {
+	c := &fakeCompleter{result: paid()}
+	r, _ := mounted(t, c)
 	ctx := invokeGet(r, "?token_ws=tok-1")
-	if len(c.got) != 1 || c.got[0].PaymentId != "p1" || c.got[0].Result.Outcome != paymentmanager.OutcomeAuthorized {
+	if len(c.got) != 1 || c.got[0].Token != "tok-1" || c.got[0].PaymentId != "" {
 		t.Fatalf("completer got %+v", c.got)
 	}
 	assertRedirect(t, ctx, page+"?payment=pay-1&status="+paymentmanager.StatusPaid+"#booking-7")
 }
 
-func TestReturn_PostTokenFromFormBody(t *testing.T) {
+func TestReturn_PostReadsTheFormBody(t *testing.T) {
 	c := &fakeCompleter{result: paid()}
-	r, fw := mounted(t, c)
-	fw.respond(200, `{"status":"AUTHORIZED","response_code":0,"buy_order":"p1","amount":25000}`)
-	ctx := invokePost(r, "token_ws=tok-2")
-	if len(c.got) != 1 || c.got[0].PaymentId != "p1" || c.got[0].Result.Outcome != paymentmanager.OutcomeAuthorized {
-		t.Fatalf("completer got %+v", c.got)
-	}
-	assertRedirect(t, ctx, page+"?payment=pay-1&status="+paymentmanager.StatusPaid+"#booking-7")
-}
-
-func TestReturn_PostAbortFromFormBody(t *testing.T) {
-	c := &fakeCompleter{result: paymentmanager.Payment{Id: "pay-1", Status: paymentmanager.StatusFailed}}
 	r, _ := mounted(t, c)
-	ctx := invokePost(r, "TBK_TOKEN=tok-a&TBK_ORDEN_COMPRA=b1&TBK_ID_SESION=s1")
-	if len(c.got) != 1 || c.got[0].PaymentId != "b1" || c.got[0].Result.Outcome != paymentmanager.OutcomeCancelled {
+	invokePost(r, "TBK_TOKEN=tok-a&TBK_ORDEN_COMPRA=b1&TBK_ID_SESION=s1")
+	if len(c.got) != 1 || c.got[0].PaymentId != "b1" || c.got[0].Token != "tok-a" {
 		t.Fatalf("completer got %+v", c.got)
-	}
-	assertRedirect(t, ctx, page+"?payment=pay-1&status="+paymentmanager.StatusFailed)
-}
-
-func TestReturn_TokenAndAbortIsAbort(t *testing.T) {
-	c := &fakeCompleter{result: paymentmanager.Payment{Id: "pay-1", Status: paymentmanager.StatusFailed}}
-	r, _ := mounted(t, c)
-	invokeGet(r, "?token_ws=tok-1&TBK_TOKEN=tok-1&TBK_ORDEN_COMPRA=b1")
-	if len(c.got) != 1 || c.got[0].PaymentId != "b1" || c.got[0].Result.Outcome != paymentmanager.OutcomeCancelled {
-		t.Fatalf("ambos tokens = el usuario hizo clic en \"volver al sitio\" después de un error; got %+v", c.got)
 	}
 }
 
 func TestReturn_TimeoutPassesBuyOrder(t *testing.T) {
-	c := &fakeCompleter{result: paymentmanager.Payment{Id: "pay-1", Status: paymentmanager.StatusFailed}}
+	c := &fakeCompleter{result: paid()}
 	r, _ := mounted(t, c)
 	invokePost(r, "TBK_ORDEN_COMPRA=b1&TBK_ID_SESION=s1")
-	if len(c.got) != 1 || c.got[0].PaymentId != "b1" || c.got[0].Result.Outcome != paymentmanager.OutcomeExpired {
+	if len(c.got) != 1 || c.got[0].PaymentId != "b1" || c.got[0].Token != "" {
 		t.Fatalf("completer got %+v", c.got)
+	}
+}
+
+func TestReturn_TokenWsIsReplacedByAbortToken(t *testing.T) {
+	c := &fakeCompleter{result: paid()}
+	r, _ := mounted(t, c)
+	invokeGet(r, "?token_ws=a&TBK_TOKEN=b&TBK_ORDEN_COMPRA=p1")
+	if len(c.got) != 1 || c.got[0].Token != "b" {
+		t.Fatalf("a return that carries TBK_TOKEN is an abort: its token wins, got %+v", c.got)
 	}
 }
 
@@ -125,42 +124,16 @@ func TestReturn_NoParamsRedirectsError(t *testing.T) {
 	assertRedirect(t, ctx, page+"?status="+transbank.StatusError)
 }
 
-func TestReturn_CommitErrorRedirectsError(t *testing.T) {
-	c := &fakeCompleter{result: paid()}
-	r, fw := mounted(t, c)
-	fw.respond(500, ``)
-	ctx := invokeGet(r, "?token_ws=tok-err")
-	assertRedirect(t, ctx, page+"?status="+transbank.StatusError)
-	if len(c.got) != 0 {
-		t.Fatal("un commit fallido nunca llega al completer")
-	}
-}
-
-func TestReturn_CompleterErrorRedirectsError(t *testing.T) {
+func TestReturn_CompleterErrorWithoutPaymentRedirectsError(t *testing.T) {
 	c := &fakeCompleter{err: paymentmanager.ErrNotFound}
-	r, fw := mounted(t, c)
-	fw.respond(200, `{"status":"AUTHORIZED","response_code":0,"buy_order":"p1","amount":25000}`)
+	r, _ := mounted(t, c)
 	ctx := invokeGet(r, "?token_ws=forged")
 	assertRedirect(t, ctx, page+"?status="+transbank.StatusError)
-	if l := ctx.GetHeader("Location"); l != page+"?status=ERROR" {
-		t.Fatalf("Location %q filtra detalles", l)
-	}
 }
 
-func TestReturn_NoReturnToOmitsHash(t *testing.T) {
-	c := &fakeCompleter{result: paymentmanager.Payment{Id: "pay-1", Status: paymentmanager.StatusPaid}}
-	r, fw := mounted(t, c)
-	fw.respond(200, `{"status":"AUTHORIZED","response_code":0,"buy_order":"p1","amount":25000}`)
-	ctx := invokeGet(r, "?token_ws=tok-1")
-	assertRedirect(t, ctx, page+"?payment=pay-1&status="+paymentmanager.StatusPaid)
-}
-
-// Un error que igual identifica el pago (p. ej. Webpay no respondió al
-// confirmar) lleva al usuario a la pantalla del pago con su estado, no a ERROR.
 func TestReturn_ErrorWithPaymentReportsItsStatus(t *testing.T) {
-	c := &fakeCompleter{result: paymentmanager.Payment{Id: "pay-1", Status: paymentmanager.StatusPending}, err: paymentmanager.ErrNotFound}
-	r, fw := mounted(t, c)
-	fw.respond(200, `{"status":"AUTHORIZED","response_code":0,"buy_order":"p1","amount":25000}`)
+	c := &fakeCompleter{result: paymentmanager.Payment{Id: "pay-1", Status: paymentmanager.StatusPending}, err: paymentmanager.ErrGatewayFailed}
+	r, _ := mounted(t, c)
 	ctx := invokeGet(r, "?token_ws=tok-1")
 	assertRedirect(t, ctx, page+"?payment=pay-1&status="+paymentmanager.StatusPending)
 }

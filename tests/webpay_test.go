@@ -149,3 +149,22 @@ func TestRefund_ErrorPropagates(t *testing.T) {
 		t.Fatal("se esperaba un error")
 	}
 }
+
+func TestConfirm_AuthorizedOnCommit(t *testing.T) {
+	fw := newFake(t)
+	fw.respond(200, `{"status":"AUTHORIZED","response_code":0,"buy_order":"p1","amount":25000}`)
+	res, err := fw.gateway().Confirm("tok-1")
+	if err != nil || res.Outcome != paymentmanager.OutcomeAuthorized || res.Amount != 25000 {
+		t.Fatalf("Confirm = %+v, %v", res, err)
+	}
+}
+
+func TestConfirm_CommitFailsThenStatusReportsPending(t *testing.T) {
+	fw := newFake(t)
+	fw.respondTo("PUT", 422, `{"error_message":"already committed or not committable"}`)
+	fw.respondTo("GET", 200, `{"status":"INITIALIZED","buy_order":"p1","amount":25000}`)
+	res, err := fw.gateway().Confirm("tok-1")
+	if err != nil || res.Outcome != paymentmanager.OutcomePending {
+		t.Fatalf("Confirm = %+v, %v; want pending", res, err)
+	}
+}

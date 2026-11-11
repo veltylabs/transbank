@@ -42,13 +42,14 @@ payment_manager ──Gateway──▶ Webpay (Start/Status/Refund) ──call�
 
 ## Ruta de retorno
 
-`MountReturn` registra `GET` y `POST` en `ReturnPath`, ambos públicos: Webpay no trae sesión, y
-un token solo tiene efecto cuando se confirma con la llave secreta. El `commit` a la API ocurre
-en esta ruta.
+`MountReturn` registra `GET` y `POST` en `ReturnPath`, ambos públicos: Webpay no trae sesión.
+La ruta de retorno solo identifica el pago (obteniendo el ID del pago y el token del query o
+del cuerpo); `payment_manager` luego pregunta a Transbank a través de `Confirm` cuál es su
+estado real. Esto asegura que un retorno falsificado desde el navegador no puede cambiar
+un pago.
 
-- `TBK_TOKEN` (con o sin `token_ws`) ⇒ abandono o error con "volver al sitio": `OutcomeCancelled`.
-- Solo `token_ws` ⇒ commit a la API; falla ⇒ 303 a `ERROR`; éxito ⇒ resultado del commit.
-- Solo `TBK_ORDEN_COMPRA` ⇒ venció el formulario: `OutcomeExpired`.
+- `TBK_TOKEN` (con o sin `token_ws`) ⇒ el token que se pasa es `TBK_TOKEN` (abandono).
+- Solo `token_ws` ⇒ el token que se pasa es `token_ws`.
 - Nada ⇒ 303 a `page?status=ERROR`, sin llamar a `payment_manager`.
 
 Siempre responde 303, nunca 5xx: un error que igual identifica el pago lleva a la pantalla

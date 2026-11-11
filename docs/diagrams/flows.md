@@ -91,19 +91,15 @@ flowchart TD
     R1 -- no --> PQ[leer parámetros de la query]
     PB --> R2
     PQ --> R2{R2: ¿qué parámetros?}
-    R2 -- "token_ws sin TBK_TOKEN" --> C{commit a la API}
-    C -- "HTTP 200" --> N[OnlineResult con Outcome<br>según diagrama 4]
-    C -- "error (ej. 500)" --> BAD
-    R2 -- TBK_TOKEN --> AB[OnlineResult OutcomeCancelled]
-    R2 -- "solo TBK_ORDEN_COMPRA" --> TO[OnlineResult OutcomeExpired]
+    R2 -- "token_ws sin TBK_TOKEN" --> N[OnlineReturn con Token=token_ws]
+    R2 -- TBK_TOKEN --> AB[OnlineReturn con Token=TBK_TOKEN]
     R2 -- ninguno --> BAD[303 a Page?status=ERROR]
     N --> CP[Completer.CompleteOnlinePayment]
     AB --> CP
-    TO --> CP
     CP --> R3{R3: ¿devolvió pago con id?}
     R3 -- sí --> OK[303 a Page?payment=id&status=ESTADO#return_to]
     R3 -- no --> ERR[303 a Page?status=ERROR]
 ```
 
-Un error con pago (p. ej. `ErrAmountMismatch` junto al pago `FAILED`) cuenta como `R3-sí`: se
+Un error con pago (p. ej. error en el gateway del payment_manager) cuenta como `R3-sí`: se
 informa el estado del pago.
