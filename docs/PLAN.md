@@ -2,6 +2,8 @@
 PLAN: "fix!: Webpay return passes only identification and Confirm asks Transbank (payment_manager Gateway.Confirm, router v0.5.0 RawQuery)"
 EXECUTOR: jules
 REVIEWER: none
+STATUS: running
+SESSION: 1239111218034982937
 ---
 
 > Read AGENTS.md at the repo root before any change.
